@@ -107,7 +107,7 @@ export class Match {
     if(this.isMultiplayer&&!this.isHost){
       this.input.update(dt);
       if(this.input.take('switchPlayer'))this.switchPlayer(1);
-      const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica');
+      const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica'),skillG=this.input.take('skillBicicleta');
       const tackleV=this.input.take('tackle'),tackleX=this.input.take('slideTackle');
       const move=this.input.direction();
       let kickPayload=null;
@@ -119,7 +119,7 @@ export class Match {
         this.multiplayer.sendInput({
           x:move.x,z:move.z,sprint:this.input.sprint,
           kick:kickPayload,
-          skill:skillR?'sombrero':skillF?'elastica':null,
+          skill:skillR?'sombrero':skillF?'elastica':skillG?'bicicleta':null,
           tackle:tackleV,slideTackle:tackleX
         });
       }
@@ -138,6 +138,7 @@ export class Match {
     this.input.update(dt);if(this.input.take('switchPlayer'))this.switchPlayer(0);
     if(this.input.take('skillSombrero'))this.control.startSkill(this.active,'sombrero');
     if(this.input.take('skillElastica'))this.control.startSkill(this.active,'elastica');
+    if(this.input.take('skillBicicleta'))this.control.startSkill(this.active,'bicicleta');
 
     if(this.isMultiplayer&&this.multiplayer&&this.guestActive){
       const r=this.multiplayer.remoteInput;

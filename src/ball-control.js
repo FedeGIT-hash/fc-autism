@@ -2,6 +2,7 @@ import { Vector3 } from 'three';
 import { BALL, clamp } from './config.js';
 
 const UP=new Vector3(0,1,0);
+const SKILL_CFG={sombrero:{cost:.12,time:.65,tone:240},elastica:{cost:.09,time:.58,tone:160},bicicleta:{cost:.1,time:.8,tone:200}};
 
 /** Close control remains a world-space ball: opponents can interrupt every touch. */
 export class BallControl {
@@ -11,18 +12,23 @@ export class BallControl {
   claim(player){if(this.owner===player)return;if(this.owner)this.owner.hasBall=false;this.owner=player;player.hasBall=true;this.held=0;this.hasTarget=false;this.match.ball.lastTouch=player.team;}
   startSkill(player,type){
     if(this.owner!==player||this.skill||player.skillCooldown>0||player.slide>0||player.pending||player.stamina<.16)return false;
-    player.stamina-=type==='sombrero'?.12:.09;player.skillCooldown=1.0;player.skillType=type;player.skillTime=type==='sombrero'?.65:.58;
+    const cfg=SKILL_CFG[type];if(!cfg)return false;
+    player.stamina-=cfg.cost;player.skillCooldown=1.0;player.skillType=type;player.skillTime=cfg.time;
     if(type==='sombrero'){
       this.match.ball.kick(player.facing,5.2+player.velocity.length()*.45,6.5,0,player.team);
       this.release(.48);player.controlLock=.55;
       player.velocity.addScaledVector(player.facing,2.2);
       this.match.onMessage('SOMBRERITO',.8);
-    }else{
-      this.skill={type,time:0,duration:.58,forward:player.facing.clone(),right:new Vector3(player.facing.z,0,-player.facing.x)};
+    }else if(type==='elastica'){
+      this.skill={type,time:0,duration:cfg.time,forward:player.facing.clone(),right:new Vector3(player.facing.z,0,-player.facing.x)};
       player.velocity.addScaledVector(player.facing,1.6);
       this.match.onMessage('ELÁSTICA',.8);
+    }else if(type==='bicicleta'){
+      this.skill={type,time:0,duration:cfg.time,forward:player.facing.clone(),right:new Vector3(player.facing.z,0,-player.facing.x)};
+      player.velocity.addScaledVector(player.facing,1.1);
+      this.match.onMessage('BICICLETA',.8);
     }
-    this.match.audio.tone(type==='sombrero'?240:160,.08);return true;
+    this.match.audio.tone(cfg.tone,.08);return true;
   }
   /** A tackle must reach the ball, face it, and meet a low ball. No forced steals at distance. */
   tryTackle(player){
@@ -52,12 +58,22 @@ export class BallControl {
       const reach=.62+clamp((speed-4)/5,0,1)*.23;
       this.target.copy(p.position).addScaledVector(p.facing,reach).addScaledVector(right,.1);
       if(this.skill){const s=this.skill;s.time+=dt;const t=clamp(s.time/s.duration,0,1);
-        // Outside touch then a sharp inside cut: continuous position and finite velocity.
-        const side=t<.38?.54*Math.sin(t/.38*Math.PI/2):.54-.99*(.5-.5*Math.cos((t-.38)/.62*Math.PI));
-        const advance=.66+t*.25;
-        this.target.copy(p.position).addScaledVector(s.forward,advance).addScaledVector(s.right,side);
-        if(t>.35&&t<.85){p.velocity.addScaledVector(s.forward,3.5*dt);}
-        if(t>=1){p.facing.copy(s.forward).applyAxisAngle(UP,-.24);this.skill=null;}
+        if(s.type==='elastica'){
+          // Outside touch then a sharp inside cut: continuous position and finite velocity.
+          const side=t<.38?.54*Math.sin(t/.38*Math.PI/2):.54-.99*(.5-.5*Math.cos((t-.38)/.62*Math.PI));
+          const advance=.66+t*.25;
+          this.target.copy(p.position).addScaledVector(s.forward,advance).addScaledVector(s.right,side);
+          if(t>.35&&t<.85){p.velocity.addScaledVector(s.forward,3.5*dt);}
+        }else if(s.type==='bicicleta'){
+          // Dos bicicletas manteniendo el balón pegado al pie, sin corte lateral.
+          const advance=.3+t*.4;
+          this.target.copy(p.position).addScaledVector(s.forward,advance);
+        }
+        if(t>=1){
+          if(s.type==='elastica')p.facing.copy(s.forward).applyAxisAngle(UP,-.24);
+          else if(s.type==='bicicleta')p.boost=2.0;
+          this.skill=null;
+        }
       }
       this.target.y=BALL.radius;
       const feed=this.hasTarget?this.target.clone().sub(this.lastTarget).divideScalar(dt):p.velocity.clone();feed.clampLength(0,14);

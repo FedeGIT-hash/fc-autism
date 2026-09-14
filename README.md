@@ -39,6 +39,7 @@ Pulsa **Jugar partido** para un encuentro 5 contra 5 o **Campo de práctica** pa
 | X | Barrida |
 | R | Sombrerito: elevar el balón por encima del rival |
 | F | Elástica: toque exterior y recorte interior |
+| G | Bicicleta: dos vueltas y arranque rápido de 2 segundos |
 | B | Alternar televisión / primera persona |
 | Esc | Pausa |
 

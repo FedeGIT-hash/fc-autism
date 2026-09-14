@@ -135,15 +135,16 @@ function moveLabel(){return ['moveUp','moveLeft','moveDown','moveRight'].map(a=>
 function refreshControlLabels(){
   const set=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html;};
   set('power-hint',`Mantén ${controlLabel('pass')} / ${controlLabel('through')} / ${controlLabel('cross')} / ${controlLabel('shot')} · ${controlLabel('curveLeft')} / ${controlLabel('curveRight')} curva`);
-  set('game-help',`${moveLabel()} mover <b>·</b> ${controlLabel('sprint')} sprint <b>·</b> ${controlLabel('pass')} pase <b>·</b> ${controlLabel('through')} filtrado <b>·</b> ${controlLabel('cross')} centro <b>·</b> ${controlLabel('shot')} tiro <b>·</b> ${controlLabel('switchPlayer')} cambiar <b>·</b> ${controlLabel('tackle')} robar <b>·</b> ${controlLabel('slideTackle')} barrida <b>·</b> ${controlLabel('skillSombrero')} sombrerito <b>·</b> ${controlLabel('skillElastica')} elástica`);
+  set('game-help',`${moveLabel()} mover <b>·</b> ${controlLabel('sprint')} sprint <b>·</b> ${controlLabel('pass')} pase <b>·</b> ${controlLabel('through')} filtrado <b>·</b> ${controlLabel('cross')} centro <b>·</b> ${controlLabel('shot')} tiro <b>·</b> ${controlLabel('switchPlayer')} cambiar <b>·</b> ${controlLabel('tackle')} robar <b>·</b> ${controlLabel('slideTackle')} barrida <b>·</b> ${controlLabel('skillSombrero')} sombrerito <b>·</b> ${controlLabel('skillElastica')} elástica <b>·</b> ${controlLabel('skillBicicleta')} bicicleta`);
   set('skill-sombrero-label',`<kbd>${controlLabel('skillSombrero')}</kbd> SOMBRERITO`);
   set('skill-elastica-label',`<kbd>${controlLabel('skillElastica')}</kbd> ELÁSTICA`);
+  set('skill-bicicleta-label',`<kbd>${controlLabel('skillBicicleta')}</kbd> BICICLETA`);
   set('tackle-note',`<kbd>${controlLabel('tackle')}</kbd> ROBAR <span>·</span> <kbd>${controlLabel('slideTackle')}</kbd> BARRIDA`);
   set('camera-key',controlLabel('camera'));
   const menuKeys=document.getElementById('menu-move-keys');if(menuKeys)menuKeys.innerHTML=`<kbd>${moveLabel()}</kbd>`;
   const grid=document.querySelector('#controls-dialog .control-grid');
   if(grid){
-    const items=[['Movimiento 360°',moveLabel()],['Sprint',controlLabel('sprint')],['Pase corto',controlLabel('pass')],['Pase filtrado',controlLabel('through')],['Centro elevado',controlLabel('cross')],['Tiro a portería',controlLabel('shot')],['Curva al golpear',`${controlLabel('curveLeft')} / ${controlLabel('curveRight')}`],['Cambiar jugador',controlLabel('switchPlayer')],['Entrada de pie / robar',controlLabel('tackle')],['Barrida',controlLabel('slideTackle')],['Sombrerito',controlLabel('skillSombrero')],['Elástica',controlLabel('skillElastica')],['Cambiar cámara',controlLabel('camera')],['Pausa',controlLabel('pause')]];
+    const items=[['Movimiento 360°',moveLabel()],['Sprint',controlLabel('sprint')],['Pase corto',controlLabel('pass')],['Pase filtrado',controlLabel('through')],['Centro elevado',controlLabel('cross')],['Tiro a portería',controlLabel('shot')],['Curva al golpear',`${controlLabel('curveLeft')} / ${controlLabel('curveRight')}`],['Cambiar jugador',controlLabel('switchPlayer')],['Entrada de pie / robar',controlLabel('tackle')],['Barrida',controlLabel('slideTackle')],['Sombrerito',controlLabel('skillSombrero')],['Elástica',controlLabel('skillElastica')],['Bicicleta',controlLabel('skillBicicleta')],['Cambiar cámara',controlLabel('camera')],['Pausa',controlLabel('pause')]];
     grid.innerHTML='';
     for(const [label,keys] of items){const s=document.createElement('span');s.innerHTML=`<kbd>${keys}</kbd> ${label}`;grid.append(s);}
   }
