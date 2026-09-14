@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101d20"><title>FC AUTISM — El juego empieza aquí</title><link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23d9fc70'/%3E%3Cpath d='M18 16h30l-3 8H27l-2 5h17l-3 8H22l-2 5h19l-3 8H7z' fill='%23101d20'/%3E%3C/svg%3E"></head>
+<body>
+  <canvas id="scene" aria-label="Estadio de fútbol 3D"></canvas>
+  <div class="vignette"></div>
+  <header class="topbar"><a class="brand" href="#" aria-label="FC AUTISM inicio"><span class="brand-icon">FA</span> FC AUTISM<span class="brand-edition">26</span></a><nav><button class="nav-item active" data-panel="home">INICIO</button><button class="nav-item" data-panel="multiplayer">ONLINE 1v1 <span style="color:var(--lime)">●</span></button><button class="nav-item" data-panel="teams">EQUIPOS</button><button class="nav-item" data-panel="stadiums">ESTADIOS</button><button class="nav-item" data-panel="settings">CONFIGURACIÓN <span>↗</span></button></nav><div class="status" id="net-status"><i></i> <span id="net-status-text">LOCAL PLAY</span> <span class="avatar">1v1</span></div></header>
+  <main id="menu">
+    <section id="home" class="panel home-panel">
+      <div class="eyebrow"><span></span> FÚTBOL EN SU ESTADO PURO</div>
+      <h1>EL CAMPO.<br>EL BALÓN.<br><em>TU MOMENTO.</em></h1>
+      <p class="intro">Las luces se encienden. La grada espera.<br>El siguiente gran partido empieza contigo.</p>
+      <div class="main-actions"><button id="play" class="primary">JUGAR PARTIDO <span>↗</span></button><button id="play-online" class="primary" data-panel="multiplayer" style="background:#83d9ff;color:#102740;">ONLINE 1v1 <span>⚡</span></button><button class="square-button" id="help" aria-label="Ver controles">?</button></div>
+      <div class="play-note"><span class="key-small">↵</span> ENTRAR AL CAMPO <span class="dot">·</span> 5 CONTRA 5</div>
+      <div class="match-preferences"><label for="camera-mode">TU PUNTO DE VISTA</label><select id="camera-mode"><option value="broadcast">Cámara de televisión</option><option value="first">Primera persona</option></select></div>
+    </section>
+    <section id="multiplayer" class="panel sub-panel multiplayer-panel" hidden>
+      <div class="eyebrow">PARTIDA EN RED · 2 JUGADORES</div>
+      <h2>DUELO ONLINE<br><em>1 CONTRA 1.</em></h2>
+      <p class="intro">Juega en tiempo real con un amigo desde cualquier lugar compartiendo el código o enlace directo.</p>
+      <div class="mp-tabs">
+        <button id="tab-create" class="mp-tab active">CREAR PARTIDA</button>
+        <button id="tab-join" class="mp-tab">UNIRSE A SALA</button>
+      </div>
+      <div id="mp-create-view" class="mp-view">
+        <div class="mp-box">
+          <label>CÓDIGO DE TU SALA</label>
+          <div class="room-code-display">
+            <strong id="created-room-code">----</strong>
+            <button id="btn-copy-code" class="btn-small" title="Copiar código">COPIAR</button>
+            <button id="btn-copy-link" class="btn-small" title="Copiar enlace">ENLACE ↗</button>
+          </div>
+          <p class="mp-tip">Comparte este código o enlace con tu amigo para que entre como rival (MARINA FC).</p>
+        </div>
+        <button id="btn-start-host" class="primary">CREAR SALA NUEVA <span>+</span></button>
+      </div>
+      <div id="mp-join-view" class="mp-view" hidden>
+        <div class="mp-box">
+          <label for="join-room-input">CÓDIGO DE LA SALA</label>
+          <input type="text" id="join-room-input" placeholder="EJ. 78A2" maxlength="8" autocomplete="off" spellcheck="false" />
+        </div>
+        <button id="btn-join-room" class="primary">CONECTAR Y JUGAR <span>↗</span></button>
+      </div>
+      <div id="mp-status-banner" class="mp-status" hidden>
+        <span class="mp-spinner" id="mp-spinner"></span>
+        <strong id="mp-status-text">Conectando...</strong>
+      </div>
+      <div class="mp-advanced-toggle">
+        <button id="toggle-advanced" class="text-button">Opciones de red (Servidor WebSocket / Render)</button>
+        <div id="mp-advanced-options" hidden>
+          <label for="ws-server-url">URL Servidor WebSocket (Render o local):</label>
+          <input type="text" id="ws-server-url" placeholder="wss://tu-servidor.onrender.com (Vacío = WebRTC P2P directo)" />
+          <small>Por defecto usa WebRTC directo sin servidor (ideal para subir a Vercel).</small>
+        </div>
+      </div>
+      <button class="secondary" data-panel="home" style="margin-top:16px;">VOLVER AL MENÚ PRINCIPAL</button>
+    </section>
+    <section id="teams" class="panel sub-panel" hidden><div class="eyebrow">PREPARA EL ENCUENTRO</div><h2>ELIGE TUS<br><em>COLORES.</em></h2><p class="intro">Tu equipo, tu identidad. El rival se elige automáticamente.</p><div id="team-options"></div><button class="primary" data-panel="home">CONFIRMAR EQUIPO <span>↗</span></button></section>
+    <section id="settings" class="panel sub-panel settings-panel" hidden><div class="eyebrow">A TU MANERA</div><h2>CADA DETALLE<br><em>CUENTA.</em></h2><div class="settings-list"><label>Calidad gráfica<select id="quality"><option value="medium">Equilibrada</option><option value="high">Alta</option><option value="low">Rendimiento</option></select></label><label>Hora del partido<select id="time"><option value="dusk">Atardecer</option><option value="day">Día</option><option value="night">Noche</option><option value="cycle">Ciclo dinámico</option></select></label><label>Clima<select id="weather"><option value="clear">Despejado</option><option value="rain">Lluvia</option></select></label><label>Duración real<select id="duration"><option value="180">3 minutos</option><option value="360" selected>6 minutos</option><option value="600">10 minutos</option></select></label><label>Ambiente de estadio<button id="sound-toggle" class="toggle" aria-pressed="false">DESACTIVADO</button></label></div><button class="primary" data-panel="home">LISTO PARA JUGAR <span>↗</span></button></section>
+    <section id="stadiums" class="panel sub-panel stadium-panel" hidden><div class="eyebrow">DOS ESCENARIOS. TU HISTORIA.</div><h2>ELIGE DÓNDE<br><em>HACER HISTORIA.</em></h2><div id="stadium-options"></div><button class="primary" data-panel="home">CONFIRMAR ESTADIO <span>↗</span></button></section><button class="venue-discover" data-panel="stadiums"><span>EXPLORA LOS ESTADIOS</span><strong id="venue-preview-name">ESTADIO DEL SOL</strong><small id="venue-preview-description">El calor de la grada. La esencia del fútbol.</small><b>CAMBIAR ESCENARIO ↗</b></button><aside class="venue-tag"><div class="venue-icon">⌖</div><div><strong data-venue-name>ESTADIO DEL SOL</strong><span id="venue-weather">19:40 · ATARDECER · 24 °C</span></div><span class="venue-live">EN VIVO</span></aside>
+    <div class="bottom-cards"><button class="match-card" data-panel="teams"><div class="card-heading">PARTIDO RÁPIDO <span>↗</span></div><div class="match-teams"><div><span class="crest home-crest">SOL</span><strong id="home-team-name">SOL FC</strong></div><span class="versus">VS</span><div><span class="crest away-crest">MAR</span><strong id="away-team-name">MARINA FC</strong></div></div><div class="card-foot">AMISTOSO <span data-venue-name>ESTADIO DEL SOL</span></div></button><button class="feature-card" id="practice"><span class="card-heading">TU JUEGO, A OTRO NIVEL <span>↗</span></span><strong>EL TALENTO<br>SE ENTRENA.</strong><span class="feature-foot"><i></i> CAMPO DE PRÁCTICA</span><span class="field-art"></span></button><div class="control-card"><span class="card-heading">DOMINA EL PARTIDO</span><div><span class="keys"><kbd>W</kbd><br><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Muévete con libertad<small>360° de posibilidades</small></span></div><button id="all-controls">VER TODOS LOS CONTROLES <span>→</span></button></div></div>
+  </main>
+  <footer id="footer"><span>EL FÚTBOL SE SIENTE. EL FÚTBOL SE JUEGA.</span><span>FC AUTISM / <b>BUILD 02</b><i></i> THREE.JS ENGINE</span></footer>
+  <section id="hud" hidden><div class="scoreboard"><span class="score-brand">FA</span><strong id="score-home">SOL</strong><b id="score">0 — 0</b><strong id="score-away">MAR</strong><span id="clock">00:00</span><span id="half">1T</span><span id="hud-ping" hidden>● 0 ms</span></div><button id="pause" class="hud-pause" aria-label="Pausar">Ⅱ</button><div class="player-hud"><span id="player-number">10</span><div><small id="player-team">SOL FC</small><strong id="player-name">A. RIVERA</strong><div class="meter"><i id="stamina"></i></div><small>ESTAMINA</small></div></div><div class="power-hud"><span id="action-label">POTENCIA DE GOLPEO</span><div class="meter"><i id="power"></i></div><small>Mantén J / K / L / Espacio · Q/E curva</small></div><canvas id="radar" width="210" height="136" aria-label="Minimapa del partido"></canvas><div class="game-help">WASD mover <b>·</b> SHIFT sprint <b>·</b> J pase <b>·</b> K filtrado <b>·</b> L centro <b>·</b> ESPACIO tiro <b>·</b> C cambiar <b>·</b> V robar <b>·</b> X barrida <b>·</b> R sombrerito <b>·</b> F elástica</div><div id="player-labels"></div></section>
+  <div id="skill-hud" hidden><span id="possession-status">BALÓN LIBRE</span><div><span><kbd>R</kbd> SOMBRERITO</span><span><kbd>F</kbd> ELÁSTICA</span></div><div class="skill-recharge"><i id="skill-ready"></i></div><small id="skill-status">ACÉRCATE AL BALÓN</small><small class="tackle-note"><kbd>V</kbd> ROBAR <span>·</span> <kbd>X</kbd> BARRIDA</small></div>
+  <button id="camera-toggle" hidden><span>B</span> <strong>TELEVISIÓN</strong> ⇄</button><div id="first-person-hint" hidden>CLIC EN EL CAMPO PARA MIRAR CON EL RATÓN · ← → GIRAR · WASD MOVER</div><div id="crosshair" hidden>·</div>
+  <div id="announcement" aria-live="polite"></div>
+  <dialog id="controls-dialog"><button class="close-dialog" aria-label="Cerrar">×</button><div class="eyebrow">EL BALÓN ESTÁ EN TUS PIES</div><h2>ASÍ SE JUEGA.</h2><div class="control-grid"><span><kbd>W A S D</kbd> Movimiento 360°</span><span><kbd>SHIFT</kbd> Sprint</span><span><kbd>J</kbd> Pase corto</span><span><kbd>K</kbd> Pase filtrado</span><span><kbd>L</kbd> Centro elevado</span><span><kbd>ESPACIO</kbd> Tiro a portería</span><span><kbd>Q / E</kbd> Curva al golpear</span><span><kbd>C</kbd> Cambiar jugador</span><span><kbd>V</kbd> Entrada de pie / robar</span><span><kbd>X</kbd> Barrida</span><span><kbd>R</kbd> Sombrerito</span><span><kbd>F</kbd> Elástica</span><span><kbd>B</kbd> Cambiar cámara</span><span><kbd>ESC</kbd> Pausa</span></div><p>Mantén pulsado para cargar y suelta para golpear. Acércate al balón: el golpe necesita contacto con la bota. Apunta con la dirección de movimiento. El balón se controla cerca del pie al recogerlo. R y F requieren posesión y estamina; V y X permiten robarlo. En televisión atacas a la derecha. En primera persona: WASD relativo a la mirada; clic en el campo y ratón para mirar, o flechas ← → para girar. Esc libera el ratón y pausa.</p><button class="primary close-dialog">ENTENDIDO <span>→</span></button></dialog>
+  <dialog id="pause-dialog"><div class="eyebrow" id="pause-eyebrow">TOMA UN RESPIRO</div><h2 id="pause-title">EN PAUSA.</h2><p id="pause-description">El campo te espera.</p><button id="resume" class="primary">VOLVER AL PARTIDO <span>→</span></button><button id="restart" class="secondary">REINICIAR PARTIDO</button><button id="quit" class="secondary">SALIR AL MENÚ</button></dialog>
+  <div id="loading"><span class="brand-icon">FA</span><p>PREPARANDO EL CAMPO</p><i></i></div>
+  <script type="module" src="/src/main.js"></script>
+</body></html>

@@ -1,0 +1,134 @@
+import './style.css';
+import * as T from 'three';
+import { Stadium } from './stadium.js';
+import { Environment, Effects, StadiumAudio } from './environment.js';
+import { Input } from './input.js';
+import { Match } from './match.js';
+import { GameCamera } from './game-camera.js';
+import { MultiplayerManager } from './multiplayer.js';
+import { TEAMS, VENUES, DEFAULT_SETTINGS, clamp } from './config.js';
+
+const $=s=>document.querySelector(s);let settings={...DEFAULT_SETTINGS};try{const saved=JSON.parse(localStorage.getItem('estadio-settings')||'{}');for(const key of ['quality','time','weather','stadium','camera']){const valid={quality:['low','medium','high'],time:['day','dusk','night','cycle'],weather:['clear','rain'],stadium:['sol','marina'],camera:['broadcast','first']}[key];if(valid.includes(saved[key]))settings[key]=saved[key];}if([180,360,600].includes(saved.duration))settings.duration=saved.duration;if(Number.isInteger(saved.team)&&saved.team>=0&&saved.team<TEAMS.length)settings.team=saved.team;}catch{}
+let renderer;
+try{renderer=new T.WebGLRenderer({canvas:$('#scene'),antialias:true,powerPreference:'high-performance'});}catch(error){$('#loading').innerHTML='<p>No se pudo iniciar WebGL 2. Activa la aceleración gráfica del navegador y vuelve a cargar.</p>';throw error;}
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;renderer.outputColorSpace=T.SRGBColorSpace;
+const scene=new T.Scene(),camera=new T.PerspectiveCamera(46,innerWidth/innerHeight,.04,1400);let stadium=new Stadium(scene,settings.stadium);const stadiumCache=new Map([[settings.stadium,stadium]]),environment=new Environment(scene,stadium),effects=new Effects(scene),audio=new StadiumAudio(),input=new Input(),match=new Match(scene,input,effects,audio),gameCamera=new GameCamera(camera,input),multiplayer=new MultiplayerManager();
+let inGame=false,menuTime=0,accumulator=0,last=performance.now(),announcementTime=0,practice=false;const target=new T.Vector3(),look=new T.Vector3();const radar=$('#radar').getContext('2d');
+const save=()=>{try{localStorage.setItem('estadio-settings',JSON.stringify(settings));}catch{}};
+function announce(message,seconds=2){$('#announcement').textContent=message;announcementTime=seconds;}
+match.onMessage=announce;
+function panel(name){document.querySelectorAll('.panel').forEach(p=>p.hidden=p.id!==name);document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.panel===name));}
+document.querySelectorAll('[data-panel]').forEach(b=>b.addEventListener('click',()=>panel(b.dataset.panel)));
+$('.brand').addEventListener('click',e=>{e.preventDefault();panel('home');});
+function refreshVenues(){const venue=VENUES[settings.stadium];document.querySelectorAll('[data-venue-name]').forEach(el=>el.textContent=venue.name);$('#venue-preview-name').textContent=venue.name;$('#venue-preview-description').textContent=venue.description;document.body.dataset.venue=settings.stadium;$('#stadium-options').innerHTML='';Object.entries(VENUES).forEach(([id,v],i)=>{const b=document.createElement('button');b.className=`stadium-option ${id===settings.stadium?'selected':''}`;b.dataset.venue=id;b.setAttribute('aria-pressed',String(id===settings.stadium));b.innerHTML=`<span class="stadium-drawing"><i></i><b>${String(i+1).padStart(2,'0')}</b></span><span class="stadium-copy"><strong>${v.name}</strong><small>${v.tag}</small></span><span class="stadium-check">${id===settings.stadium?'✓':'↗'}</span>`;b.onclick=()=>{stadium.setVisible(false);settings.stadium=id;if(!stadiumCache.has(id))stadiumCache.set(id,new Stadium(scene,id));stadium=stadiumCache.get(id);stadium.setVisible(true);environment.stadium=stadium;applySettings();refreshVenues();};$('#stadium-options').append(b);});}
+function cameraMode(mode){document.body.classList.toggle('first-person',mode==='first');settings.camera=mode;gameCamera.setMode(mode,match.active);$('#camera-mode').value=mode;$('#camera-toggle strong').textContent=mode==='first'?'PRIMERA PERSONA':'TELEVISIÓN';if(mode==='broadcast'&&inGame){camera.position.copy(match.active.position).add(new T.Vector3(-2,32,36));look.copy(match.active.position);}save();}
+$('#camera-mode').value=settings.camera;$('#camera-mode').onchange=e=>{settings.camera=e.target.value;save();};
+$('#camera-toggle').onclick=()=>cameraMode(gameCamera.mode==='first'?'broadcast':'first');
+$('#scene').addEventListener('click',async()=>{if(inGame&&match.running&&gameCamera.mode==='first'){try{await $('#scene').requestPointerLock();}catch{announce('Usa ← → para girar la cámara',2);}}});
+document.addEventListener('pointerlockchange',()=>{if(inGame&&gameCamera.mode==='first'&&!document.pointerLockElement&&match.running)pause();});
+function refreshTeams(){const home=TEAMS[settings.team],away=TEAMS[(settings.team+1)%3];$('#home-team-name').textContent=home.name;$('#away-team-name').textContent=away.name;$('.home-crest').textContent=home.code;$('.home-crest').style.background=home.hex;$('.away-crest').textContent=away.code;$('.away-crest').style.background=away.hex;$('#team-options').innerHTML='';TEAMS.forEach((t,i)=>{const b=document.createElement('button');b.className=`team-option ${i===settings.team?'selected':''}`;b.setAttribute('aria-pressed',i===settings.team);b.innerHTML=`<span class="crest" style="background:${t.hex}">${t.code}</span><div><strong>${t.name}</strong><small>${t.desc}</small></div><span>${i===settings.team?'✓':'+'}</span>`;b.onclick=()=>{settings.team=i;save();refreshTeams();match.setup(settings.team);};$('#team-options').append(b);});}
+function applySettings(){environment.mode=settings.time;environment.weather=settings.weather;match.ball.wet=settings.weather==='rain';const high=settings.quality==='high',low=settings.quality==='low';renderer.setPixelRatio(Math.min(devicePixelRatio,high?2:low?1:1.5));renderer.shadowMap.enabled=!low;stadium.lamps.forEach((l,i)=>{l.castShadow=high||(!low&&i%2===0);});$('#venue-weather').textContent=settings.weather==='rain'?'19:40 · LLUVIA · 18 °C':settings.time==='day'?'15:00 · DESPEJADO · 28 °C':settings.time==='night'?'22:00 · NOCHE · 19 °C':settings.time==='cycle'?'CICLO DINÁMICO · 24 °C':'19:40 · ATARDECER · 24 °C';save();}
+for(const id of ['quality','time','weather','duration']){$('#'+id).value=settings[id];$('#'+id).onchange=e=>{settings[id]=id==='duration'?Number(e.target.value):e.target.value;applySettings();};}
+$('#sound-toggle').onclick=()=>{settings.sound=!settings.sound;audio.setEnabled(settings.sound);settings.sound=audio.enabled;$('#sound-toggle').textContent=settings.sound?'ACTIVADO':'DESACTIVADO';$('#sound-toggle').setAttribute('aria-pressed',String(settings.sound));};
+function showControls(){$('#controls-dialog').showModal();}$('#help').onclick=showControls;$('#all-controls').onclick=showControls;document.querySelectorAll('.close-dialog').forEach(b=>b.onclick=()=>$('#controls-dialog').close());
+function start(isPractice=false){practice=isPractice;match.isMultiplayer=false;match.setup(settings.team,practice,settings.duration);match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;announce(practice?'CAMPO DE PRÁCTICA':settings.camera==='first'?'VIVE EL PARTIDO DESDE DENTRO':'COMIENZA TU MOMENTO',2);audio.tone(1200,.3);}
+$('#play').onclick=()=>start();$('#practice').onclick=()=>start(true);
+function startMultiplayer(isHost,config){
+  practice=false;
+  if(config.stadium&&config.stadium!==settings.stadium){
+    stadium.setVisible(false);settings.stadium=config.stadium;
+    if(!stadiumCache.has(config.stadium))stadiumCache.set(config.stadium,new Stadium(scene,config.stadium));
+    stadium=stadiumCache.get(config.stadium);stadium.setVisible(true);environment.stadium=stadium;
+  }
+  if(config.weather)settings.weather=config.weather;applySettings();
+  match.setupMultiplayer(multiplayer,isHost,config.team||settings.team,config.duration||settings.duration);
+  match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=false;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;
+  announce(isHost?'PARTIDO ONLINE · LOCAL (P1)':'PARTIDO ONLINE · RIVAL (P2)',2.5);audio.tone(1200,.3);
+}
+function pause(){if(!inGame||!match.running)return;if(document.pointerLockElement)document.exitPointerLock();match.running=false;input.enabled=false;input.clear();$('#pause-eyebrow').textContent='TOMA UN RESPIRO';$('#pause-title').textContent='EN PAUSA.';$('#pause-description').textContent='El campo te espera.';$('#resume').hidden=false;$('#pause-dialog').showModal();}
+function resume(){if(!inGame)return;$('#pause-dialog').close();match.running=true;input.enabled=true;input.clear();accumulator=0;}
+$('#pause').onclick=pause;$('#resume').onclick=resume;$('#restart').onclick=()=>start(practice);
+function quitGame(){
+  $('#pause-dialog').close();match.running=false;input.enabled=false;input.clear();inGame=false;document.body.classList.remove('playing');$('#hud').hidden=true;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#announcement').textContent='';announcementTime=0;
+  if(match.isMultiplayer){multiplayer.disconnect();match.isMultiplayer=false;const net=$('#net-status-text');if(net)net.textContent='LOCAL PLAY';const b=$('#mp-status-banner');if(b)b.hidden=true;}
+  match.setup(settings.team);panel('home');
+}
+$('#quit').onclick=quitGame;
+$('#pause-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!$('#resume').hidden)resume();});
+addEventListener('keydown',e=>{if(e.code==='KeyB'&&inGame&&match.running&&!e.repeat)cameraMode(gameCamera.mode==='first'?'broadcast':'first');if(e.code==='Escape'&&inGame&&!$('#pause-dialog').open)pause();if(e.code==='Enter'&&!inGame&&!document.querySelector('dialog[open]')&&!['BUTTON','SELECT'].includes(document.activeElement.tagName))start();});
+addEventListener('blur',()=>{if(inGame)pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden&&inGame)pause();});
+match.onHalf=()=>{pause();$('#pause-eyebrow').textContent='45 MINUTOS';$('#pause-title').textContent='DESCANSO.';$('#pause-description').textContent='Segunda parte: sigues atacando a la misma portería. Saque del rival.';};
+match.onEnd=()=>{input.enabled=false;input.clear();$('#pause-eyebrow').textContent='90 MINUTOS · FINAL';$('#pause-title').textContent=`${match.score[0]} — ${match.score[1]}`;$('#pause-description').textContent=match.score[0]===match.score[1]?'Todo queda en tablas.':match.score[0]>match.score[1]?'La victoria lleva tus colores.':'Cada partido es una nueva oportunidad.';$('#resume').hidden=true;$('#pause-dialog').showModal();audio.tone(1300,.5);};
+function updateHUD(){const p=match.active;if(!p)return;$('#score').textContent=match.score.join(' — ');const mins=practice?match.elapsed/60:Math.min(90,match.elapsed/match.duration*90);$('#clock').textContent=`${String(Math.floor(mins)).padStart(2,'0')}:${String(Math.floor((mins%1)*60)).padStart(2,'0')}`;$('#half').textContent=practice?'LIBRE':match.halfDone?'2T':'1T';$('#player-name').textContent=p.name;$('#player-number').textContent=p.number;$('#player-team').textContent=match.teams[0].name;$('#stamina').style.width=`${p.stamina*100}%`;$('#power').style.width=`${(input.charge?.time||0)/1.2*100}%`;$('#action-label').textContent=input.charge?({shot:'TIRO A PORTERÍA',pass:'PASE CORTO',through:'PASE FILTRADO',cross:'CENTRO AL ÁREA'}[input.charge.type]):'POTENCIA DE GOLPEO';
+    const owner=match.control.owner;$('#possession-status').textContent=owner===p?'● BALÓN CONTROLADO':owner?.team===0?'● POSESIÓN DEL EQUIPO':owner?'○ PRESIONA Y RECUPERA':'○ BALÓN LIBRE';$('#skill-hud').classList.toggle('controlled',owner===p);$('#skill-ready').style.width=`${Math.max(0,1-p.skillCooldown/1.5)*100}%`;$('#skill-status').textContent=p.skillCooldown>.05?`RECARGA · ${p.skillCooldown.toFixed(1)} s`:owner!==p?'REGATES CON POSESIÓN':p.stamina<.16?'RECUPERA ESTAMINA':'REGATES LISTOS';
+    const v=new T.Vector3();for(const a of match.players){v.copy(a.position);v.y=2.2;v.project(camera);a.label.style.display=(gameCamera.mode==='first'&&a===p)||v.z>1||Math.abs(v.x)>1||Math.abs(v.y)>1?'none':'block';a.label.style.left=`${(v.x*.5+.5)*innerWidth}px`;a.label.style.top=`${(-v.y*.5+.5)*innerHeight}px`;a.label.classList.toggle('active',a===p);}
+    radar.clearRect(0,0,210,136);radar.strokeStyle='#cfdfc65a';radar.lineWidth=1;radar.strokeRect(8,8,194,120);radar.beginPath();radar.moveTo(105,8);radar.lineTo(105,128);radar.arc(105,68,17,0,Math.PI*2);radar.stroke();radar.strokeRect(8,40,25,56);radar.strokeRect(177,40,25,56);for(const a of match.players){radar.fillStyle=a===p?'#ffffff':match.teams[a.team].hex;radar.beginPath();radar.arc(105+a.position.x/60*194,68+a.position.z/38*120,a===p?4:3,0,Math.PI*2);radar.fill();}radar.fillStyle='#ffffff';radar.fillRect(103+match.ball.position.x/60*194,66+match.ball.position.z/38*120,4,4);
+}
+function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.05);last=now;menuTime+=dt;$('#skill-hud').hidden=!inGame;environment.update(inGame&&!match.running?0:dt);effects.update(inGame&&!match.running?0:dt,environment.mode==='night'||environment.mode==='dusk');
+  $('#camera-toggle').hidden=!inGame;$('#crosshair').hidden=!inGame||gameCamera.mode!=='first';$('#first-person-hint').hidden=!inGame||gameCamera.mode!=='first'||!!document.pointerLockElement;
+  if(inGame){if(match.running){accumulator+=dt;while(accumulator>=1/120){match.step(1/120);accumulator-=1/120;}}else accumulator=0;match.syncVisuals(match.running?dt:0);target.copy(match.ball.position).lerp(match.active.position,.4);target.x=clamp(target.x,-21,21);target.z=clamp(target.z,-10,10);target.y=0;const desired=new T.Vector3(target.x-2,32, target.z+36);camera.position.lerp(desired,1-Math.exp(-dt*2.8));look.lerp(target,1-Math.exp(-dt*3));camera.lookAt(look);gameCamera.update(match,match.running?dt:0);updateHUD();}
+  else{camera.fov=46;camera.updateProjectionMatrix();camera.position.set(54+Math.sin(menuTime*.025)*5,36+Math.sin(menuTime*.06)*1.5,54+Math.cos(menuTime*.025)*5);camera.lookAt(-10,1,-2);match.syncVisuals(0);}
+  if(announcementTime>0){announcementTime-=dt;if(announcementTime<=0)$('#announcement').textContent='';}renderer.render(scene,camera);
+}
+addEventListener('resize',()=>{renderer.setSize(innerWidth,innerHeight);camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();});
+multiplayer.onStatus=(text,type)=>{
+  const banner=$('#mp-status-banner');if(banner){banner.hidden=false;banner.className=`mp-status ${type||''}`;$('#mp-status-text').textContent=text;const s=$('#mp-spinner');if(s)s.style.display=(type==='ready'||type==='error')?'none':'inline-block';}
+  const net=$('#net-status-text');if(net)net.textContent=text;
+};
+multiplayer.onConnected=({isHost,roomCode})=>{
+  const net=$('#net-status-text');if(net)net.textContent=`SALA #${roomCode}`;
+  announce('¡RIVAL CONECTADO!',2);audio.tone(1000,.4);
+  if(isHost){
+    setTimeout(()=>{
+      const cfg={team:settings.team,stadium:settings.stadium,duration:settings.duration,weather:settings.weather};
+      multiplayer.send('start_match',{config:cfg});
+      startMultiplayer(true,cfg);
+    },1200);
+  }
+};
+multiplayer.onMatchStart=config=>startMultiplayer(false,config);
+multiplayer.onSnapshot=snap=>match.applySnapshot(snap);
+multiplayer.onEvent=evt=>{if(evt.type==='goal'){match.audio.tone(700,.55);announce(`¡GOOOL!\n${match.teams[evt.team].name}`,2.4);}};
+multiplayer.onPing=ms=>{const p=$('#hud-ping');if(p){p.hidden=false;p.textContent=`● ${ms} ms`;}const n=$('#net-status-text');if(n)n.textContent=`ONLINE · ${ms}ms`;};
+multiplayer.onOpponentDisconnect=()=>{announce('RIVAL DESCONECTADO',3);if(inGame)setTimeout(()=>quitGame(),2800);};
+
+$('#tab-create').onclick=()=>{
+  $('#tab-create').classList.add('active');$('#tab-join').classList.remove('active');
+  $('#mp-create-view').hidden=false;$('#mp-join-view').hidden=true;
+};
+$('#tab-join').onclick=()=>{
+  $('#tab-join').classList.add('active');$('#tab-create').classList.remove('active');
+  $('#mp-join-view').hidden=false;$('#mp-create-view').hidden=true;
+};
+$('#btn-start-host').onclick=()=>{
+  const wsUrl=$('#ws-server-url').value.trim()||null;
+  const code=multiplayer.createRoom(null,wsUrl);
+  $('#created-room-code').textContent=code;
+};
+$('#btn-copy-code').onclick=()=>{
+  const code=multiplayer.roomCode||$('#created-room-code').textContent;
+  if(code&&code!=='----'){navigator.clipboard.writeText(code).then(()=>{const b=$('#btn-copy-code');b.textContent='¡COPIADO!';setTimeout(()=>b.textContent='COPIAR',1500);});}
+};
+$('#btn-copy-link').onclick=()=>{
+  const code=multiplayer.roomCode||$('#created-room-code').textContent;
+  if(code&&code!=='----'){
+    const link=`${location.origin}${location.pathname}?room=${code}`;
+    navigator.clipboard.writeText(link).then(()=>{const b=$('#btn-copy-link');b.textContent='¡COPIADO!';setTimeout(()=>b.textContent='ENLACE ↗',1500);});
+  }
+};
+$('#btn-join-room').onclick=()=>{
+  const code=$('#join-room-input').value.trim().toUpperCase();
+  const wsUrl=$('#ws-server-url').value.trim()||null;
+  if(code)multiplayer.joinRoom(code,wsUrl);else $('#join-room-input').focus();
+};
+$('#toggle-advanced').onclick=()=>{$('#mp-advanced-options').hidden=!$('#mp-advanced-options').hidden;};
+
+const urlParams=new URLSearchParams(location.search);
+if(urlParams.has('room')){
+  const room=urlParams.get('room').trim().toUpperCase();
+  if(room){panel('multiplayer');$('#tab-join').click();$('#join-room-input').value=room;setTimeout(()=>{multiplayer.joinRoom(room,$('#ws-server-url').value.trim()||null);},600);}
+}
+
+refreshTeams();refreshVenues();match.setup(settings.team);applySettings();requestAnimationFrame(frame);$('#loading').hidden=true;
+// Explicit opt-in only: a narrow inspection surface for local browser integration tests.
+if(new URLSearchParams(location.search).has('debug'))window.__ESTADIO__={match,environment,renderer,start,pause,resume,settings};
