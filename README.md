@@ -42,6 +42,8 @@ Pulsa **Jugar partido** para un encuentro 5 contra 5 o **Campo de práctica** pa
 | B | Alternar televisión / primera persona |
 | Esc | Pausa |
 
+> **Controles reasignables:** en **CONFIGURACIÓN → Personalizar controles** haz clic en una tecla y pulsa la nueva. Se guardan por dispositivo (localStorage) y se aplican a partidos, práctica y online. Cada acción admite hasta dos teclas.
+
 Mantén J, K, L o Espacio para cargar potencia (hasta 1,2 segundos) y suelta para golpear. **Hay que acercar la bota al balón**: cargar desde lejos no produce un tiro. La animación del golpe dura 0,24 segundos. El contacto de la bota utiliza una esfera barrida entre fotogramas. Los centros y tiros permiten elevación; la potencia alta y la fatiga aumentan la dispersión.
 
 El cronómetro escala 90 minutos a 3, 6 o 10 minutos reales. Hay descanso, marcador, final de partido, reinicio y pausa automática al cambiar de ventana. La práctica no tiene límite de tiempo.

@@ -7,6 +7,7 @@ import { Match } from './match.js';
 import { GameCamera } from './game-camera.js';
 import { MultiplayerManager } from './multiplayer.js';
 import { TEAMS, VENUES, DEFAULT_SETTINGS, clamp } from './config.js';
+import { controls, CONTROL_LABELS, resetControls, resetControl, saveControls, keyLabel, actionForCode } from './controls.js';
 
 const $=s=>document.querySelector(s);let settings={...DEFAULT_SETTINGS};try{const saved=JSON.parse(localStorage.getItem('estadio-settings')||'{}');for(const key of ['quality','time','weather','stadium','camera']){const valid={quality:['low','medium','high'],time:['day','dusk','night','cycle'],weather:['clear','rain'],stadium:['sol','marina'],camera:['broadcast','first']}[key];if(valid.includes(saved[key]))settings[key]=saved[key];}if([180,360,600].includes(saved.duration))settings.duration=saved.duration;if(Number.isInteger(saved.team)&&saved.team>=0&&saved.team<TEAMS.length)settings.team=saved.team;}catch{}
 let renderer;
@@ -30,7 +31,7 @@ function refreshTeams(){const home=TEAMS[settings.team],away=TEAMS[(settings.tea
 function applySettings(){environment.mode=settings.time;environment.weather=settings.weather;match.ball.wet=settings.weather==='rain';const high=settings.quality==='high',low=settings.quality==='low';renderer.setPixelRatio(Math.min(devicePixelRatio,high?2:low?1:1.5));renderer.shadowMap.enabled=!low;stadium.lamps.forEach((l,i)=>{l.castShadow=high||(!low&&i%2===0);});$('#venue-weather').textContent=settings.weather==='rain'?'19:40 · LLUVIA · 18 °C':settings.time==='day'?'15:00 · DESPEJADO · 28 °C':settings.time==='night'?'22:00 · NOCHE · 19 °C':settings.time==='cycle'?'CICLO DINÁMICO · 24 °C':'19:40 · ATARDECER · 24 °C';save();}
 for(const id of ['quality','time','weather','duration']){$('#'+id).value=settings[id];$('#'+id).onchange=e=>{settings[id]=id==='duration'?Number(e.target.value):e.target.value;applySettings();};}
 $('#sound-toggle').onclick=()=>{settings.sound=!settings.sound;audio.setEnabled(settings.sound);settings.sound=audio.enabled;$('#sound-toggle').textContent=settings.sound?'ACTIVADO':'DESACTIVADO';$('#sound-toggle').setAttribute('aria-pressed',String(settings.sound));};
-function showControls(){$('#controls-dialog').showModal();}$('#help').onclick=showControls;$('#all-controls').onclick=showControls;document.querySelectorAll('.close-dialog').forEach(b=>b.onclick=()=>$('#controls-dialog').close());
+function showControls(){$('#controls-dialog').showModal();}$('#help').onclick=showControls;$('#all-controls').onclick=showControls;document.querySelectorAll('.close-dialog').forEach(b=>b.onclick=()=>{const d=b.closest('dialog');(d||$('#controls-dialog')).close();});
 function start(isPractice=false){practice=isPractice;match.isMultiplayer=false;match.setup(settings.team,practice,settings.duration);match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;announce(practice?'CAMPO DE PRÁCTICA':settings.camera==='first'?'VIVE EL PARTIDO DESDE DENTRO':'COMIENZA TU MOMENTO',2);audio.tone(1200,.3);}
 $('#play').onclick=()=>start();$('#practice').onclick=()=>start(true);
 function startMultiplayer(isHost,config){
@@ -55,7 +56,7 @@ function quitGame(){
 }
 $('#quit').onclick=quitGame;
 $('#pause-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!$('#resume').hidden)resume();});
-addEventListener('keydown',e=>{if(e.code==='KeyB'&&inGame&&match.running&&!e.repeat)cameraMode(gameCamera.mode==='first'?'broadcast':'first');if(e.code==='Escape'&&inGame&&!$('#pause-dialog').open)pause();if(e.code==='Enter'&&!inGame&&!document.querySelector('dialog[open]')&&!['BUTTON','SELECT'].includes(document.activeElement.tagName))start();});
+addEventListener('keydown',e=>{const action=actionForCode(e.code);if(action==='camera'&&inGame&&match.running&&!e.repeat)cameraMode(gameCamera.mode==='first'?'broadcast':'first');if(action==='pause'&&inGame&&!$('#pause-dialog').open)pause();if(action==='start'&&!inGame&&!document.querySelector('dialog[open]')&&!['BUTTON','SELECT'].includes(document.activeElement.tagName))start();});
 addEventListener('blur',()=>{if(inGame)pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden&&inGame)pause();});
 match.onHalf=()=>{pause();$('#pause-eyebrow').textContent='45 MINUTOS';$('#pause-title').textContent='DESCANSO.';$('#pause-description').textContent='Segunda parte: sigues atacando a la misma portería. Saque del rival.';};
 match.onEnd=()=>{input.enabled=false;input.clear();$('#pause-eyebrow').textContent='90 MINUTOS · FINAL';$('#pause-title').textContent=`${match.score[0]} — ${match.score[1]}`;$('#pause-description').textContent=match.score[0]===match.score[1]?'Todo queda en tablas.':match.score[0]>match.score[1]?'La victoria lleva tus colores.':'Cada partido es una nueva oportunidad.';$('#resume').hidden=true;$('#pause-dialog').showModal();audio.tone(1300,.5);};
@@ -129,6 +130,58 @@ if(urlParams.has('room')){
   if(room){panel('multiplayer');$('#tab-join').click();$('#join-room-input').value=room;setTimeout(()=>{multiplayer.joinRoom(room,$('#ws-server-url').value.trim()||null);},600);}
 }
 
-refreshTeams();refreshVenues();match.setup(settings.team);applySettings();requestAnimationFrame(frame);$('#loading').hidden=true;
+function controlLabel(action){return (controls[action]||[]).map(keyLabel).join(' / ');}
+function moveLabel(){return ['moveUp','moveLeft','moveDown','moveRight'].map(a=>{const code=(controls[a]||[]).find(c=>!c.startsWith('Arrow'))||(controls[a]||[])[0];return code?keyLabel(code):'—';}).join(' ');}
+function refreshControlLabels(){
+  const set=(id,html)=>{const el=document.getElementById(id);if(el)el.innerHTML=html;};
+  set('power-hint',`Mantén ${controlLabel('pass')} / ${controlLabel('through')} / ${controlLabel('cross')} / ${controlLabel('shot')} · ${controlLabel('curveLeft')} / ${controlLabel('curveRight')} curva`);
+  set('game-help',`${moveLabel()} mover <b>·</b> ${controlLabel('sprint')} sprint <b>·</b> ${controlLabel('pass')} pase <b>·</b> ${controlLabel('through')} filtrado <b>·</b> ${controlLabel('cross')} centro <b>·</b> ${controlLabel('shot')} tiro <b>·</b> ${controlLabel('switchPlayer')} cambiar <b>·</b> ${controlLabel('tackle')} robar <b>·</b> ${controlLabel('slideTackle')} barrida <b>·</b> ${controlLabel('skillSombrero')} sombrerito <b>·</b> ${controlLabel('skillElastica')} elástica`);
+  set('skill-sombrero-label',`<kbd>${controlLabel('skillSombrero')}</kbd> SOMBRERITO`);
+  set('skill-elastica-label',`<kbd>${controlLabel('skillElastica')}</kbd> ELÁSTICA`);
+  set('tackle-note',`<kbd>${controlLabel('tackle')}</kbd> ROBAR <span>·</span> <kbd>${controlLabel('slideTackle')}</kbd> BARRIDA`);
+  set('camera-key',controlLabel('camera'));
+  const menuKeys=document.getElementById('menu-move-keys');if(menuKeys)menuKeys.innerHTML=`<kbd>${moveLabel()}</kbd>`;
+  const grid=document.querySelector('#controls-dialog .control-grid');
+  if(grid){
+    const items=[['Movimiento 360°',moveLabel()],['Sprint',controlLabel('sprint')],['Pase corto',controlLabel('pass')],['Pase filtrado',controlLabel('through')],['Centro elevado',controlLabel('cross')],['Tiro a portería',controlLabel('shot')],['Curva al golpear',`${controlLabel('curveLeft')} / ${controlLabel('curveRight')}`],['Cambiar jugador',controlLabel('switchPlayer')],['Entrada de pie / robar',controlLabel('tackle')],['Barrida',controlLabel('slideTackle')],['Sombrerito',controlLabel('skillSombrero')],['Elástica',controlLabel('skillElastica')],['Cambiar cámara',controlLabel('camera')],['Pausa',controlLabel('pause')]];
+    grid.innerHTML='';
+    for(const [label,keys] of items){const s=document.createElement('span');s.innerHTML=`<kbd>${keys}</kbd> ${label}`;grid.append(s);}
+  }
+}
+
+const configDialog=document.getElementById('controls-config-dialog'),configList=document.getElementById('controls-config-list'),configHint=document.getElementById('controls-config-hint');
+let capture=null;
+function renderControlsConfig(){
+  configList.innerHTML='';
+  for(const action of Object.keys(CONTROL_LABELS)){
+    const row=document.createElement('div');row.className='control-config-row';
+    const label=document.createElement('span');label.className='control-config-label';label.textContent=CONTROL_LABELS[action];
+    const chips=document.createElement('div');chips.className='key-chips';
+    (controls[action]||[]).forEach((code,slot)=>{const chip=document.createElement('button');chip.type='button';chip.className='key-chip';chip.textContent=keyLabel(code);chip.onclick=()=>startCapture(action,slot,chip);chips.append(chip);});
+    if((controls[action]||[]).length<2){const add=document.createElement('button');add.type='button';add.className='key-chip add';add.textContent='＋';add.title='Añadir segunda tecla';add.onclick=()=>startCapture(action,(controls[action]||[]).length,null);chips.append(add);}
+    const reset=document.createElement('button');reset.type='button';reset.className='key-reset';reset.textContent='↺';reset.title='Restaurar teclas por defecto';reset.onclick=()=>{resetControl(action);renderControlsConfig();refreshControlLabels();};
+    row.append(label,chips,reset);configList.append(row);
+  }
+}
+function startCapture(action,slot,chipEl){capture={action,slot};document.querySelectorAll('.key-chip.listening').forEach(c=>c.classList.remove('listening'));if(chipEl)chipEl.classList.add('listening');configHint.textContent=`Pulsa la tecla para: ${CONTROL_LABELS[action]} · ESC cancela`;}
+function cancelCapture(){capture=null;document.querySelectorAll('.key-chip.listening').forEach(c=>c.classList.remove('listening'));configHint.textContent='';}
+document.getElementById('open-controls-config').onclick=()=>{renderControlsConfig();configDialog.showModal();};
+document.getElementById('controls-config-restore').onclick=()=>{resetControls();renderControlsConfig();refreshControlLabels();};
+document.getElementById('controls-config-done').onclick=()=>{cancelCapture();configDialog.close();};
+configDialog.addEventListener('cancel',e=>e.preventDefault());
+configDialog.addEventListener('close',cancelCapture);
+addEventListener('keydown',e=>{
+  if(capture){
+    e.preventDefault();
+    if(e.code==='Escape'){cancelCapture();return;}
+    const {action,slot}=capture;
+    for(const a of Object.keys(controls))controls[a]=(controls[a]||[]).filter(c=>c!==e.code);
+    const codes=controls[action]||[];
+    if(slot<codes.length)codes[slot]=e.code;else codes.push(e.code);
+    controls[action]=codes;saveControls();cancelCapture();renderControlsConfig();refreshControlLabels();
+  }else if(configDialog.open&&e.code==='Escape'){e.preventDefault();configDialog.close();}
+});
+
+refreshTeams();refreshVenues();match.setup(settings.team);applySettings();refreshControlLabels();requestAnimationFrame(frame);$('#loading').hidden=true;
 // Explicit opt-in only: a narrow inspection surface for local browser integration tests.
 if(new URLSearchParams(location.search).has('debug'))window.__ESTADIO__={match,environment,renderer,start,pause,resume,settings};

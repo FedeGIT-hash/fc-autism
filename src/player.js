@@ -23,14 +23,14 @@ export class Player {
     const running=sprint&&this.stamina>.08;let speed=(this.keeper?4.8:running?8.4:5.6)*(this.hasBall?.95:1);if(this.playstyle&&this.playstyle.type==='quickstep')speed*=1.6;
     const dir=direction.clone().setY(0);if(dir.lengthSq()>1)dir.normalize();const currentSpeed=this.velocity.length();let turn=0;
     if(lookDirection)this.facing.copy(lookDirection);
-    else if(dir.lengthSq()>.01&&this.slide<=0){const from=Math.atan2(this.facing.x,this.facing.z),to=Math.atan2(dir.x,dir.z);const difference=Math.atan2(Math.sin(to-from),Math.cos(to-from));const maxTurn=(11.0-currentSpeed*.28)*(this.hasBall?.96:1)*dt;turn=clamp(difference,-maxTurn,maxTurn);this.facing.set(Math.sin(from+turn),0,Math.cos(from+turn));}
+    else if(dir.lengthSq()>.01&&this.slide<=0){const from=Math.atan2(this.facing.x,this.facing.z),to=Math.atan2(dir.x,dir.z);const difference=Math.atan2(Math.sin(to-from),Math.cos(to-from));const maxTurn=(14.0-currentSpeed*.28)*(this.hasBall?.96:1)*dt;turn=clamp(difference,-maxTurn,maxTurn);this.facing.set(Math.sin(from+turn),0,Math.cos(from+turn));}
     const dot=dir.lengthSq()>.01?this.facing.dot(dir):0;
-    const alignment=dir.lengthSq()>.01?Math.max(.58,(1+dot)*.5):0;
-    const moveHeading=dir.lengthSq()>.01?this.facing.clone().lerp(dir,.45).normalize():this.facing;
+    const alignment=dir.lengthSq()>.01?Math.max(.7,(1+dot)*.5):0;
+    const moveHeading=dir.lengthSq()>.01?this.facing.clone().lerp(dir,.62).normalize():this.facing;
     const targetSpeed=this.skillTime>0?Math.max(speed,7.2):speed;
     const target=lookDirection&&this.slide<=0?dir.clone().multiplyScalar(targetSpeed*(dot<-.2?.72:1)):moveHeading.clone().multiplyScalar(this.slide>0?9:dir.length()*targetSpeed*alignment);
     const delta=target.sub(this.velocity),braking=dir.lengthSq()<.01||this.velocity.dot(delta)<0;
-    delta.clampLength(0,(this.slide>0?8.5:braking?21:running?18:15)*dt);
+    delta.clampLength(0,(this.slide>0?8.5:braking?26:running?22:19)*dt);
     this.acceleration.copy(delta).divideScalar(Math.max(dt,.0001));this.velocity.add(delta);this.position.addScaledVector(this.velocity,dt);
     this.position.x=clamp(this.position.x,-29.4,29.4);this.position.z=clamp(this.position.z,-18.5,18.5);
     this.turnLean+=(clamp(-turn/Math.max(dt,.0001)*currentSpeed*.009,-.2,.2)-this.turnLean)*(1-Math.exp(-dt*8));

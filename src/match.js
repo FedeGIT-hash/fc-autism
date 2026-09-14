@@ -106,9 +106,9 @@ export class Match {
     // Multiplayer Guest (!isHost) branch
     if(this.isMultiplayer&&!this.isHost){
       this.input.update(dt);
-      if(this.input.take('KeyC'))this.switchPlayer(1);
-      const skillR=this.input.take('KeyR'),skillF=this.input.take('KeyF');
-      const tackleV=this.input.take('KeyV'),tackleX=this.input.take('KeyX');
+      if(this.input.take('switchPlayer'))this.switchPlayer(1);
+      const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica');
+      const tackleV=this.input.take('tackle'),tackleX=this.input.take('slideTackle');
       const move=this.input.direction();
       let kickPayload=null;
       if(this.input.release){
@@ -135,9 +135,9 @@ export class Match {
     }
 
     // Host & Single Player branch
-    this.input.update(dt);if(this.input.take('KeyC'))this.switchPlayer(0);
-    if(this.input.take('KeyR'))this.control.startSkill(this.active,'sombrero');
-    if(this.input.take('KeyF'))this.control.startSkill(this.active,'elastica');
+    this.input.update(dt);if(this.input.take('switchPlayer'))this.switchPlayer(0);
+    if(this.input.take('skillSombrero'))this.control.startSkill(this.active,'sombrero');
+    if(this.input.take('skillElastica'))this.control.startSkill(this.active,'elastica');
 
     if(this.isMultiplayer&&this.multiplayer&&this.guestActive){
       const r=this.multiplayer.remoteInput;
@@ -152,8 +152,8 @@ export class Match {
     for(const p of this.players){let dir=new T.Vector3(),sprint=false;
       if(p===this.active){
         dir.copy(aim);sprint=this.input.sprint;
-        if(this.input.take('KeyX')&&p.startTackle(true))this.effects.burst(p.position,22);
-        if(this.input.take('KeyV'))p.startTackle(false);
+        if(this.input.take('slideTackle')&&p.startTackle(true))this.effects.burst(p.position,22);
+        if(this.input.take('tackle'))p.startTackle(false);
         if(p.slide>0)dir.copy(p.facing);
       }else if(this.isMultiplayer&&p===this.guestActive&&this.multiplayer){
         const r=this.multiplayer.remoteInput;
