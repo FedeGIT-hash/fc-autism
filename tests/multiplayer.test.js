@@ -104,3 +104,30 @@ test('el generador de salas produce códigos válidos de 4 caracteres', () => {
   assert.equal(code.length, 4);
   assert.match(code, /^[2-9A-Z]{4}$/);
 });
+
+test('los eventos de borde (tiro/regate) no se pierden con los frames vacíos siguientes', () => {
+  const mp = new MultiplayerManager();
+  mp.onRemoteInput = () => {};
+
+  // El guest manda un tiro en un único frame…
+  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: { type: 'shot', time: 0.7, curve: 0 }, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+  // …y en los frames siguientes manda kick: null (y regates/tackles a false).
+  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+
+  // El tiro sigue pendiente para que el host lo consuma en su step().
+  assert.equal(mp.remoteInput.kick.type, 'shot');
+  assert.equal(mp.remoteInput.kick.time, 0.7);
+
+  // El movimiento continuo sí se sobreescribe con el último valor.
+  mp.handleMessage({ type: 'input', input: { x: -1, z: 1, sprint: true, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+  assert.equal(mp.remoteInput.x, -1);
+  assert.equal(mp.remoteInput.z, 1);
+  assert.equal(mp.remoteInput.sprint, true);
+  assert.equal(mp.remoteInput.kick.type, 'shot');
+
+  // Una entrada (slide tackle) tampoco se borra con los frames vacíos.
+  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: true, switchPlayer: false } });
+  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+  assert.equal(mp.remoteInput.slideTackle, true);
+});

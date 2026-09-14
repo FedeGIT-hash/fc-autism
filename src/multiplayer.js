@@ -238,7 +238,23 @@ export class MultiplayerManager {
 
       case 'input':
         if (msg.input) {
-          Object.assign(this.remoteInput, msg.input);
+          // Continuous movement fields are overwritten directly.
+          const ri = this.remoteInput;
+          if (msg.input.x !== undefined) ri.x = msg.input.x;
+          if (msg.input.z !== undefined) ri.z = msg.input.z;
+          if (msg.input.sprint !== undefined) ri.sprint = msg.input.sprint;
+          // One-shot actions are edge-triggered: they arrive non-null on a single
+          // frame, then every following frame sends null/false. Overwriting here
+          // would erase a pending kick/skill/tackle before the host consumes it,
+          // which made online shots (and skill moves/tackles) get dropped at random.
+          if (msg.input.kick) ri.kick = msg.input.kick;
+          if (msg.input.skill) ri.skill = msg.input.skill;
+          if (msg.input.tackle) ri.tackle = true;
+          if (msg.input.slideTackle) ri.slideTackle = true;
+          if (msg.input.switchPlayer) {
+            ri.switchPlayer = true;
+            ri.newIndex = msg.input.newIndex;
+          }
           this.onRemoteInput(msg.input);
         }
         break;
