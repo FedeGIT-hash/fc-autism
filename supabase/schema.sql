@@ -8,6 +8,9 @@
 -- el hash. gen_random_uuid() es parte del núcleo de Postgres 13+.
 -- ============================================================
 
+-- Se puede ejecutar de nuevo sin borrar jugadores, sesiones ni salas.
+begin;
+
 -- Jugadores (nombre de usuario + hash de contraseña)
 create table if not exists public.players (
   id uuid primary key default gen_random_uuid(),
@@ -39,12 +42,19 @@ alter table public.players enable row level security;
 alter table public.sessions enable row level security;
 alter table public.rooms enable row level security;
 
+drop policy if exists "rooms readable" on public.rooms;
 create policy "rooms readable" on public.rooms for select using (true);
 
 -- ------------------------------------------------------------------
 -- RPCs (SECURITY DEFINER). El parámetro p_password_hash ya llega
 -- hasheado desde el navegador; nunca se guarda texto plano.
 -- ------------------------------------------------------------------
+
+-- Las versiones anteriores usaban p_password. PostgreSQL exige recrear
+-- la función para cambiar ese nombre a p_password_hash.
+-- Se recrean dentro de esta transacción; las tablas y sus datos se conservan.
+drop function if exists public.register_player(text, text);
+drop function if exists public.login_player(text, text);
 
 create or replace function public.register_player(p_username text, p_password_hash text)
 returns table (id uuid, username text, token uuid)
@@ -57,14 +67,15 @@ begin
   if length(coalesce(p_password_hash,'')) < 8 then
     raise exception 'La contraseña no es válida';
   end if;
-  insert into public.players (username, password_hash)
+  insert into public.players as new_player (username, password_hash)
   values (lower(p_username), p_password_hash)
-  on conflict (username) do nothing
-  returning id into v_id;
+  on conflict on constraint players_username_key do nothing
+  returning new_player.id into v_id;
   if v_id is null then
     raise exception 'Ese nombre ya está en uso';
   end if;
-  insert into public.sessions (user_id) values (v_id) returning token into v_token;
+  insert into public.sessions as new_session (user_id)
+  values (v_id) returning new_session.token into v_token;
   return query select pl.id, pl.username, v_token from public.players pl where pl.id = v_id;
 end $$;
 
@@ -80,7 +91,8 @@ begin
   if v_id is null then
     raise exception 'Nombre o contraseña incorrectos';
   end if;
-  insert into public.sessions (user_id) values (v_id) returning token into v_token;
+  insert into public.sessions as new_session (user_id)
+  values (v_id) returning new_session.token into v_token;
   return query select pl.id, pl.username, v_token from public.players pl where pl.id = v_id;
 end $$;
 
@@ -106,7 +118,7 @@ begin
   end if;
   insert into public.rooms (code, host_id, config)
   values (upper(p_code), v_user, coalesce(p_config, '{}'::jsonb))
-  on conflict (code) do update
+  on conflict on constraint rooms_code_key do update
     set host_id = excluded.host_id,
         config = excluded.config,
         created_at = now();
@@ -122,3 +134,5 @@ begin
     from public.rooms r
     where r.code = upper(p_code);
 end $$;
+
+commit;
