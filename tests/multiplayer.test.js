@@ -129,3 +129,11 @@ test('los eventos de borde (tiro/regate) no se pierden con los frames vacíos', 
   mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false } });
   assert.equal(mp.remoteInputs.get('p2').slideTackle, true);
 });
+
+test('un input reciente queda marcado para evitar movimiento atascado al desconectarse', () => {
+  const mp = new MultiplayerManager();
+  mp.isHost = true;
+  mp.handleInput({ id: 'p2', input: { x: 1, z: 0, sprint: true } });
+  assert.equal(mp.remoteInputs.get('p2').x, 1);
+  assert.ok(Number.isFinite(mp.remoteInputs.get('p2').updatedAt));
+});

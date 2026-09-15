@@ -68,6 +68,7 @@ function updateHUD(){const p=match.active;if(!p)return;$('#score').textContent=m
     const v=new T.Vector3();for(const a of match.players){v.copy(a.position);v.y=2.2;v.project(camera);a.label.style.display=(gameCamera.mode==='first'&&a===p)||v.z>1||Math.abs(v.x)>1||Math.abs(v.y)>1?'none':'block';a.label.style.left=`${(v.x*.5+.5)*innerWidth}px`;a.label.style.top=`${(-v.y*.5+.5)*innerHeight}px`;a.label.classList.toggle('active',a===p);}
     radar.clearRect(0,0,210,136);radar.strokeStyle='#cfdfc65a';radar.lineWidth=1;radar.strokeRect(8,8,194,120);radar.beginPath();radar.moveTo(105,8);radar.lineTo(105,128);radar.arc(105,68,17,0,Math.PI*2);radar.stroke();radar.strokeRect(8,40,25,56);radar.strokeRect(177,40,25,56);for(const a of match.players){radar.fillStyle=a===p?'#ffffff':match.teams[a.team].hex;radar.beginPath();radar.arc(105+a.position.x/60*194,68+a.position.z/38*120,a===p?4:3,0,Math.PI*2);radar.fill();}radar.fillStyle='#ffffff';radar.fillRect(103+match.ball.position.x/60*194,66+match.ball.position.z/38*120,4,4);
 }
+function updateOnlinePlayers(roster=[]){const box=$('#online-players'),list=$('#online-players-list');if(!box||!list)return;box.hidden=!match.isMultiplayer;list.innerHTML='';for(const p of roster){const row=document.createElement('div');row.className=`online-player ${p.side===0?'':'rival'}`;row.innerHTML=`<i></i><span>${escapeHtml(p.username)}</span>${p.id===currentUser?.id?'<b>TÚ</b>':''}`;list.append(row);}}
 function frame(now){requestAnimationFrame(frame);const dt=Math.min((now-last)/1000,.05);last=now;menuTime+=dt;$('#skill-hud').hidden=!inGame;environment.update(inGame&&!match.running?0:dt);effects.update(inGame&&!match.running?0:dt,environment.mode==='night'||environment.mode==='dusk');
   $('#camera-toggle').hidden=!inGame;$('#crosshair').hidden=!inGame||gameCamera.mode!=='first';$('#first-person-hint').hidden=!inGame||gameCamera.mode!=='first'||!!document.pointerLockElement;
   if(inGame){if(match.running){accumulator+=dt;while(accumulator>=1/120){match.step(1/120);accumulator-=1/120;}}else accumulator=0;match.syncVisuals(match.running?dt:0);target.copy(match.ball.position).lerp(match.active.position,.4);target.x=clamp(target.x,-21,21);target.z=clamp(target.z,-10,10);target.y=0;const desired=new T.Vector3(target.x-2,32, target.z+36);camera.position.lerp(desired,1-Math.exp(-dt*2.8));look.lerp(target,1-Math.exp(-dt*3));camera.lookAt(look);gameCamera.update(match,match.running?dt:0);updateHUD();}
@@ -85,11 +86,11 @@ multiplayer.onConnected=({isHost,roomCode})=>{
   const code=$('#lobby-room-code');if(code)code.textContent=roomCode;
   if(!isHost)announce('CONECTADO A LA SALA',2);
 };
-multiplayer.onRoster=roster=>renderRoster(roster);
-multiplayer.onMatchStart=(config,roster)=>startMultiplayer(multiplayer.isHost,config,roster);
+multiplayer.onRoster=roster=>{renderRoster(roster);if(inGame)updateOnlinePlayers(roster);};
+multiplayer.onMatchStart=(config,roster)=>{startMultiplayer(multiplayer.isHost,config,roster);updateOnlinePlayers(roster);};
 multiplayer.onSnapshot=snap=>match.applySnapshot(snap);
 multiplayer.onEvent=evt=>{if(evt.type==='goal'){match.audio.tone(700,.55);announce(`¡GOOOL!\n${match.teams[evt.team].name}`,2.4);}};
-multiplayer.onOpponentDisconnect=()=>{announce('UN JUGADOR SE HA IDO',3);if(inGame)setTimeout(()=>quitGame(),2800);else renderRoster(multiplayer.roster);};
+multiplayer.onOpponentDisconnect=id=>{multiplayer.roster=multiplayer.roster.filter(p=>p.id!==id);announce('UN JUGADOR SE HA DESCONECTADO · EL PARTIDO SIGUE',3);renderRoster(multiplayer.roster);if(inGame)updateOnlinePlayers(multiplayer.roster);};
 
 $('#tab-create').onclick=()=>{
   $('#tab-create').classList.add('active');$('#tab-join').classList.remove('active');

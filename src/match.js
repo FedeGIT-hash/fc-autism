@@ -38,12 +38,17 @@ export class Match {
   goal(team){if(this.freeze>0)return;this.control.release();this.score[team]++;this.freeze=2.4;this.kickoff=1-team;this.ball.velocity.multiplyScalar(.1);this.onMessage(`¡GOOOL!\n${this.teams[team].name}`,2.4);this.audio.tone(700,.55);
     if(this.isMultiplayer&&this.isHost&&this.multiplayer)this.multiplayer.sendEvent({type:'goal',team,score:[...this.score]});
   }
-  restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;if(team===0&&!this.isMultiplayer)this.active=p;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
+  restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
   switchPlayer(team=null){
     if(this.isMultiplayer)return; // cambio de jugador desactivado online (slots fijos)
     const targetTeam=team!==null?team:0;
     const current=this.active;
-    const sorted=this.players.filter(p=>p.team===targetTeam&&p!==current&&!p.keeper).sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position));
+    const owner=this.control.owner;
+    const sorted=this.players.filter(p=>p.team===targetTeam&&p!==current&&!p.keeper).sort((a,b)=>{
+      // If a teammate controls the ball, make that player the first option.
+      if(a===owner)return -1;if(b===owner)return 1;
+      return a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position);
+    });
     if(sorted[0])this.active=sorted[0];
   }
   requestKick(p,type,charge=0,curve=0,receiver=null){if(p.cooldown>0||p.skillTime>0||p.slide>0)return;const amount=clamp(charge/1.2,0,1);
@@ -116,6 +121,9 @@ export class Match {
 
     // Host & Single Player branch
     this.input.update(dt);
+    // `switchPlayer` used to be shown in the controls but was never consumed,
+    // leaving the player stuck with the same footballer for the whole match.
+    if(this.input.take('switchPlayer'))this.switchPlayer();
     if(this.input.take('skillSombrero'))this.control.startSkill(this.active,'sombrero');
     if(this.input.take('skillElastica'))this.control.startSkill(this.active,'elastica');
     if(this.input.take('skillBicicleta'))this.control.startSkill(this.active,'bicicleta');
@@ -140,7 +148,9 @@ export class Match {
         if(p.slide>0)dir.copy(p.facing);
       }else if(p.remoteId&&this.multiplayer){
         const r=this.multiplayer.remoteInputs.get(p.remoteId);
-        dir.set(r?.x||0,0,r?.z||0);sprint=!!r?.sprint;
+        const fresh=r&&(!r.updatedAt||Date.now()-r.updatedAt<1200);
+        if(fresh){dir.set(r.x||0,0,r.z||0);sprint=!!r.sprint;}
+        else{const decision=this.ai.steer(p);dir.copy(decision.direction);sprint=decision.sprint;}
         if(p.slide>0)dir.copy(p.facing);
       }else{
         const decision=this.ai.steer(p);dir.copy(decision.direction);sprint=decision.sprint;

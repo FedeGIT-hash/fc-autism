@@ -24,6 +24,7 @@ export class MultiplayerManager {
     this.roster = [];                      // [{ id, username, side, slot }]
     this.remoteInputs = new Map();         // id -> { x, z, sprint, kick, skill, tackle, slideTackle }
     this.presentIds = [];
+    this.missingPeerTimers = new Map();
 
     this.onStatus = () => {};
     this.onConnected = () => {};
@@ -88,6 +89,10 @@ export class MultiplayerManager {
       .on('broadcast', { event: 'snapshot' }, ({ payload }) => this.handleSnapshot(payload))
       .on('broadcast', { event: 'event' }, ({ payload }) => this.handleEvent(payload))
       .subscribe(async status => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          this.onStatus('CONEXIÓN INESTABLE · RECONECTANDO...', 'waiting');
+          return;
+        }
         if (status !== 'SUBSCRIBED') return;
         await this.channel.track({
           id: this.localId,
@@ -131,14 +136,33 @@ export class MultiplayerManager {
     const prev = new Set(this.presentIds);
     this.presentIds = [...ids];
 
-    if (this.connected) {
-      for (const id of prev) {
-        if (!ids.has(id) && id !== this.localId) this.onOpponentDisconnect();
-      }
+    for (const id of ids) {
+      const timer = this.missingPeerTimers.get(id);
+      if (timer) { clearTimeout(timer); this.missingPeerTimers.delete(id); }
+    }
+    if (this.connected) for (const id of prev) {
+      if (ids.has(id) || id === this.localId || this.missingPeerTimers.has(id)) continue;
+      const timer = setTimeout(() => {
+        this.missingPeerTimers.delete(id);
+        if (!this.presentIds.includes(id)) {
+          this.roster = this.roster.filter(p => p.id !== id);
+          this.remoteInputs.delete(id);
+          if (this.isHost && this.channel) this.channel.send({ type: 'broadcast', event: 'roster', payload: { roster: this.roster } });
+          this.onRoster(this.roster);
+          this.onOpponentDisconnect(id);
+        }
+      }, 10000);
+      this.missingPeerTimers.set(id, timer);
     }
 
     if (this.isHost) {
       const roster = this.computeRoster();
+      // Keep a player visible while their connection is inside the grace
+      // window; a transient Presence sync must not eject them from the match.
+      for (const id of this.missingPeerTimers.keys()) {
+        const previous = this.roster.find(p => p.id === id);
+        if (previous && !roster.some(p => p.id === id)) roster.push(previous);
+      }
       this.roster = roster;
       const me = roster.find(p => p.id === this.localId);
       if (me) this.slot = me.slot;
@@ -196,6 +220,7 @@ export class MultiplayerManager {
     if (!this.isHost || !payload || !payload.id) return;
     const input = payload.input || {};
     const ri = this.remoteInputs.get(payload.id) || {};
+    ri.updatedAt = Date.now();
     if (input.x !== undefined) ri.x = input.x;
     if (input.z !== undefined) ri.z = input.z;
     if (input.sprint !== undefined) ri.sprint = input.sprint;
@@ -225,6 +250,8 @@ export class MultiplayerManager {
     this.roster = [];
     this.remoteInputs.clear();
     this.presentIds = [];
+    for (const timer of this.missingPeerTimers.values()) clearTimeout(timer);
+    this.missingPeerTimers.clear();
     this.isHost = false;
     this.slot = -1;
   }
