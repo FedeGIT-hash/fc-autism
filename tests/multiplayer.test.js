@@ -149,3 +149,11 @@ test('un input reciente queda marcado para evitar movimiento atascado al descone
   assert.equal(mp.remoteInputs.get('p2').x, 1);
   assert.ok(Number.isFinite(mp.remoteInputs.get('p2').updatedAt));
 });
+
+test('el anfitrión limita los snapshots para no saturar Realtime', () => {
+  const { m: host, dummyMp } = fixture(true);
+  let snapshots = 0;
+  dummyMp.sendSnapshot = () => snapshots++;
+  for (let i = 0; i < 120; i++) host.step(1 / 120);
+  assert.equal(snapshots, 20);
+});

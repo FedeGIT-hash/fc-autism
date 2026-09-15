@@ -90,7 +90,7 @@ multiplayer.onRoster=roster=>{renderRoster(roster);if(inGame)updateOnlinePlayers
 multiplayer.onMatchStart=(config,roster)=>{startMultiplayer(multiplayer.isHost,config,roster);updateOnlinePlayers(roster);};
 multiplayer.onSnapshot=snap=>match.applySnapshot(snap);
 multiplayer.onEvent=evt=>{if(evt.type==='goal'){match.audio.tone(700,.55);announce(`¡GOOOL!\n${match.teams[evt.team].name}`,2.4);}};
-multiplayer.onOpponentDisconnect=id=>{multiplayer.roster=multiplayer.roster.filter(p=>p.id!==id);announce('UN JUGADOR SE HA DESCONECTADO · EL PARTIDO SIGUE',3);renderRoster(multiplayer.roster);if(inGame)updateOnlinePlayers(multiplayer.roster);};
+multiplayer.onOpponentDisconnect=id=>{multiplayer.roster=multiplayer.roster.filter(p=>p.id!==id);announce('CONEXIÓN PERDIDA · EL PARTIDO SIGUE',3);renderRoster(multiplayer.roster);if(inGame)updateOnlinePlayers(multiplayer.roster);};
 
 $('#tab-create').onclick=()=>{
   $('#tab-create').classList.add('active');$('#tab-join').classList.remove('active');

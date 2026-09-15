@@ -8,7 +8,7 @@ import { PlaystyleManager } from './playstyle.js';
 
 export class Match {
   constructor(scene,input,effects,audio){this.scene=scene;this.input=input;this.effects=effects;this.audio=audio;this.players=[];this.ball=new BallPhysics();this.ball.onGoal=team=>this.goal(team);this.ball.onOut=()=>this.restartFromOut();this.score=[0,0];this.elapsed=0;this.running=false;this.freeze=0;this.practice=false;this.duration=360;this.active=null;this.onMessage=()=>{};this.onEnd=()=>{};this.onHalf=()=>{};this.halfDone=false;
-    this.isMultiplayer=false;this.isHost=true;this.multiplayer=null;this.localId=null;this.remote=new Map();this.syncCounter=0;
+    this.isMultiplayer=false;this.isHost=true;this.multiplayer=null;this.localId=null;this.remote=new Map();this.syncCounter=0;this.inputSyncElapsed=0;
     this.control=new BallControl(this);this.ai=new FootballAI(this);this.playstyle=new PlaystyleManager(scene,this);
     const tex=this.ballTexture();this.ballMesh=new T.Mesh(new T.SphereGeometry(BALL.radius,24,16),new T.MeshStandardMaterial({map:tex,roughness:.55}));this.ballMesh.castShadow=true;scene.add(this.ballMesh);
     this.marker=new T.Mesh(new T.RingGeometry(.49,.56,40),new T.MeshBasicMaterial({color:0xdaff78,side:T.DoubleSide}));this.marker.rotation.x=-Math.PI/2;scene.add(this.marker);
@@ -20,7 +20,7 @@ export class Match {
     for(let t=0;t<2;t++)for(let i=0;i<5;i++){if(practice&&t===1&&i!==4)continue;this.players.push(new Player(this.scene,t,i,this.teams[t]));}this.resetPositions(0);this.running=false;this.syncVisuals(0);this.playstyle.reset();
   }
   setupMultiplayer(multiplayer,isHost,roster,localId,config={}){
-    this.isMultiplayer=true;this.isHost=isHost;this.multiplayer=multiplayer;this.localId=localId;this.remote=new Map();
+    this.isMultiplayer=true;this.isHost=isHost;this.multiplayer=multiplayer;this.localId=localId;this.remote=new Map();this.syncCounter=0;this.inputSyncElapsed=0;
     this.setup(config.team||0,false,config.duration||360);
     const myEntry=roster.find(p=>p.id===localId);
     this.localTeam=myEntry?myEntry.side:0;this.localIndex=myEntry?myEntry.slot:0;
@@ -107,13 +107,18 @@ export class Match {
         kickPayload={...this.input.release,curve:this.input.curve};
         this.input.release=null;
       }
-      if(this.multiplayer){
+      // Realtime is for short state messages, not a 120 Hz simulation feed.
+      // Send movement at 20 Hz and send action edges immediately.
+      this.inputSyncElapsed+=dt;
+      const hasEvent=!!(kickPayload||skillR||skillF||skillG||tackleV||tackleX||switchPlayer);
+      if(this.multiplayer&&(hasEvent||this.inputSyncElapsed>=.05)){
         this.multiplayer.sendInput({
           x:move.x,z:move.z,sprint:this.input.sprint,
           kick:kickPayload,
           skill:skillR?'sombrero':skillF?'elastica':skillG?'bicicleta':null,
           tackle:tackleV,slideTackle:tackleX,switchPlayer
         });
+        this.inputSyncElapsed=0;
       }
       if(this.active){
         const aim=new T.Vector3(move.x,0,move.z);
@@ -188,7 +193,7 @@ export class Match {
 
     if(this.isMultiplayer&&this.isHost&&this.multiplayer){
       this.syncCounter++;
-      if(this.syncCounter%2===0){
+      if(this.syncCounter%6===0){
         this.multiplayer.sendSnapshot(this.getSnapshot());
       }
     }
