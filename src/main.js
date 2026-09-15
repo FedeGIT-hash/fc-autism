@@ -221,6 +221,8 @@ $('#auth-form').addEventListener('submit',async e=>{
   const username=$('#auth-username').value.trim();
   const password=$('#auth-password').value;
   if(!username||!password){showAuthError('Escribe un nombre y una contraseña');return;}
+  if(username.length<2){showAuthError('El nombre debe tener al menos 2 caracteres');return;}
+  if(password.length<3){showAuthError('La contraseña debe tener al menos 3 caracteres');return;}
   const btn=$('#auth-submit');btn.disabled=true;hideAuthError();
   try{
     const res=authMode==='login'?await auth.login(username,password):await auth.register(username,password);

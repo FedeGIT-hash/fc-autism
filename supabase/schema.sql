@@ -2,11 +2,13 @@
 -- FC AUTISM · Esquema Supabase
 -- Pega este archivo COMPLETO en:
 --   Supabase Dashboard > SQL Editor > New query > RUN
+--
+-- Nota: no requiere extensiones. La contraseña se hashea en el
+-- navegador (SHA-256 + nombre de usuario) y aquí solo se guarda
+-- el hash. gen_random_uuid() es parte del núcleo de Postgres 13+.
 -- ============================================================
 
-create extension if not exists pgcrypto;
-
--- Jugadores (nombre de usuario + contraseña con bcrypt)
+-- Jugadores (nombre de usuario + hash de contraseña)
 create table if not exists public.players (
   id uuid primary key default gen_random_uuid(),
   username text unique not null,
@@ -33,7 +35,6 @@ create table if not exists public.rooms (
 
 -- RLS: el hash y las sesiones NUNCA se exponen por el cliente anon.
 -- Las salas sí son legibles (para localizar una sala por su código).
--- Toda escritura se hace a través de las funciones RPC de abajo.
 alter table public.players enable row level security;
 alter table public.sessions enable row level security;
 alter table public.rooms enable row level security;
@@ -41,10 +42,11 @@ alter table public.rooms enable row level security;
 create policy "rooms readable" on public.rooms for select using (true);
 
 -- ------------------------------------------------------------------
--- RPCs (SECURITY DEFINER): validan credenciales / token en servidor.
+-- RPCs (SECURITY DEFINER). El parámetro p_password_hash ya llega
+-- hasheado desde el navegador; nunca se guarda texto plano.
 -- ------------------------------------------------------------------
 
-create or replace function public.register_player(p_username text, p_password text)
+create or replace function public.register_player(p_username text, p_password_hash text)
 returns table (id uuid, username text, token uuid)
 language plpgsql security definer set search_path = public as $$
 declare v_id uuid; v_token uuid;
@@ -52,11 +54,11 @@ begin
   if length(coalesce(p_username,'')) < 2 then
     raise exception 'El nombre debe tener al menos 2 caracteres';
   end if;
-  if length(coalesce(p_password,'')) < 3 then
-    raise exception 'La contraseña debe tener al menos 3 caracteres';
+  if length(coalesce(p_password_hash,'')) < 8 then
+    raise exception 'La contraseña no es válida';
   end if;
   insert into public.players (username, password_hash)
-  values (lower(p_username), crypt(p_password, gen_salt('bf')))
+  values (lower(p_username), p_password_hash)
   on conflict (username) do nothing
   returning id into v_id;
   if v_id is null then
@@ -66,7 +68,7 @@ begin
   return query select pl.id, pl.username, v_token from public.players pl where pl.id = v_id;
 end $$;
 
-create or replace function public.login_player(p_username text, p_password text)
+create or replace function public.login_player(p_username text, p_password_hash text)
 returns table (id uuid, username text, token uuid)
 language plpgsql security definer set search_path = public as $$
 declare v_id uuid; v_token uuid;
@@ -74,7 +76,7 @@ begin
   select pl.id into v_id
   from public.players pl
   where pl.username = lower(p_username)
-    and pl.password_hash = crypt(p_password, pl.password_hash);
+    and pl.password_hash = p_password_hash;
   if v_id is null then
     raise exception 'Nombre o contraseña incorrectos';
   end if;

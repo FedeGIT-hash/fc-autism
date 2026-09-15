@@ -18,9 +18,15 @@ function translate(msg) {
   if (/ya está en uso/i.test(msg)) return 'Ese nombre ya está en uso';
   if (/incorrectos/i.test(msg)) return 'Nombre o contraseña incorrectos';
   if (/2 caracteres/i.test(msg)) return 'El nombre debe tener al menos 2 caracteres';
-  if (/3 caracteres/i.test(msg)) return 'La contraseña debe tener al menos 3 caracteres';
   if (/no es válida/i.test(msg)) return 'La sesión ha caducado, inicia sesión de nuevo';
   return msg;
+}
+
+// Hash determinista en el navegador: el nombre hace de "sal" (único por jugador).
+async function hashPassword(username, password) {
+  const data = new TextEncoder().encode(`${username.trim().toLowerCase()}::${password}`);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export const auth = {
@@ -31,10 +37,12 @@ export const auth = {
   clear() { localStorage.removeItem(SESSION_KEY); },
 
   async register(username, password) {
-    return call('register_player', { p_username: username, p_password: password });
+    const hash = await hashPassword(username, password);
+    return call('register_player', { p_username: username, p_password_hash: hash });
   },
   async login(username, password) {
-    return call('login_player', { p_username: username, p_password: password });
+    const hash = await hashPassword(username, password);
+    return call('login_player', { p_username: username, p_password_hash: hash });
   },
   async whoami(token) {
     const { data, error } = await supabase.rpc('whoami', { p_token: token });
