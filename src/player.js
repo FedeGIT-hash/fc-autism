@@ -43,6 +43,7 @@ export class Player {
     if(this.skillTime>0&&this.skillType==='sombrero')this.legs[1].rotation.x=-Math.sin((1-this.skillTime/.65)*Math.PI)*1.5;
     if(this.skillTime>0&&this.skillType==='elastica'){const t=1-this.skillTime/.58;this.legs[1].rotation.z=Math.sin(t*Math.PI*2)*.9;this.legs[1].rotation.x=-.28+Math.cos(t*Math.PI*2)*.38;this.legs[0].rotation.x=-Math.sin(t*Math.PI*2)*.55;this.legs[0].rotation.z=-Math.sin(t*Math.PI*2)*.3;}
     if(this.skillTime>0&&this.skillType==='bicicleta'){const t=1-this.skillTime/.8,ph=t*Math.PI*4;this.legs[1].rotation.x=Math.sin(ph)*.85;this.legs[1].rotation.z=Math.cos(ph)*.7;this.legs[0].rotation.x=-Math.sin(ph+Math.PI)*.4;this.legs[0].rotation.z=Math.cos(ph+Math.PI)*.3;}
+    if(this.skillTime>0&&this.skillType==='recorte'){const t=1-this.skillTime/.42;this.legs[1].rotation.z=Math.sin(t*Math.PI)*.75;this.legs[1].rotation.x=-Math.sin(t*Math.PI)*.5;}
     if(this.tackle>0&&this.slide<=0)this.legs[1].rotation.x=-Math.sin(this.tackle/.27*Math.PI)*1.1;
     this.body.rotation.x=this.slide>0?-1.1:clamp(this.velocity.length()*.016+this.acceleration.dot(this.facing)*.003,-.06,.2);
     this.body.rotation.z=this.slide>0?.23:this.turnLean;this.body.position.y=this.slide>0?-.5:Math.abs(Math.sin(this.runPhase))*.04*stride;this.mesh.updateMatrixWorld(true);this.boot.getWorldPosition(this.bootCurrent);

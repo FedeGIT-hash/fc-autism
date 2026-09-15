@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { BALL, clamp } from './config.js';
 
 const UP=new Vector3(0,1,0);
-const SKILL_CFG={sombrero:{cost:.12,time:.65,tone:240},elastica:{cost:.09,time:.58,tone:160},bicicleta:{cost:.1,time:.8,tone:200}};
+const SKILL_CFG={sombrero:{cost:.12,time:.65,tone:240},elastica:{cost:.09,time:.58,tone:160},bicicleta:{cost:.1,time:.8,tone:200},recorte:{cost:.08,time:.42,tone:180}};
 
 /** Close control remains a world-space ball: opponents can interrupt every touch. */
 export class BallControl {
@@ -27,6 +27,9 @@ export class BallControl {
       this.skill={type,time:0,duration:cfg.time,forward:player.facing.clone(),right:new Vector3(player.facing.z,0,-player.facing.x)};
       player.velocity.addScaledVector(player.facing,1.1);
       this.match.onMessage('BICICLETA',.8);
+    }else if(type==='recorte'){
+      this.skill={type,time:0,duration:cfg.time,forward:player.facing.clone(),right:new Vector3(player.facing.z,0,-player.facing.x)};
+      this.match.onMessage('RECORTE',.7);
     }
     this.match.audio.tone(cfg.tone,.08);return true;
   }
@@ -40,6 +43,7 @@ export class BallControl {
     // A body between boot and ball shields possession; tackle from the exposed side.
     const relative=owner.position.clone().sub(player.position).setY(0),along=relative.dot(toBall);
     if(along>0&&along<distance-.12&&relative.clone().addScaledVector(toBall,-along).length()<.34)return false;
+    if(player.slide>0&&this.match.isPenaltyFoul(owner,player)){this.match.awardPenalty(owner.team);return true;}
     owner.controlLock=.8;owner.skillTime=0;owner.skillType=null;player.tackleConnected=true;
     this.release(player.slide>0?.24:0);
     if(player.slide>0)ball.kick(player.facing,6.7,.35,0,player.team);
@@ -68,10 +72,14 @@ export class BallControl {
           // Dos bicicletas manteniendo el balón pegado al pie, sin corte lateral.
           const advance=.3+t*.4;
           this.target.copy(p.position).addScaledVector(s.forward,advance);
+        }else if(s.type==='recorte'){
+          this.target.copy(p.position).addScaledVector(s.forward,.5+t*.22).addScaledVector(s.right,.5*Math.sin(t*Math.PI));
+          if(t>.28)p.velocity.addScaledVector(s.forward,4.2*dt);
         }
         if(t>=1){
           if(s.type==='elastica')p.facing.copy(s.forward).applyAxisAngle(UP,-.24);
           else if(s.type==='bicicleta')p.boost=2.0;
+          else if(s.type==='recorte')p.facing.copy(s.forward).applyAxisAngle(UP,-.68);
           this.skill=null;
         }
       }

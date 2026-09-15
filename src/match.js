@@ -35,10 +35,31 @@ export class Match {
     if(!this.isMultiplayer)this.active=this.players.find(p=>p.team===0&&p.index===0);
     this.input.clear();
   }
-  goal(team){if(this.freeze>0)return;this.control.release();this.score[team]++;this.freeze=2.4;this.kickoff=1-team;this.ball.velocity.multiplyScalar(.1);this.onMessage(`¡GOOOL!\n${this.teams[team].name}`,2.4);this.audio.tone(700,.55);
+  goal(team){if(this.freeze>0)return;this.penalty=null;this.control.release();this.score[team]++;this.freeze=2.4;this.kickoff=1-team;this.ball.velocity.multiplyScalar(.1);this.onMessage(`¡GOOOL!\n${this.teams[team].name}`,2.4);this.audio.tone(700,.55);
     if(this.isMultiplayer&&this.isHost&&this.multiplayer)this.multiplayer.sendEvent({type:'goal',team,score:[...this.score]});
   }
   restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
+  isPenaltyFoul(owner,tackler){const defender=tackler.team,goalSign=defender===0?-1:1;return owner.team!==defender&&owner.position.x*goalSign>18&&Math.abs(owner.position.z)<9;}
+  awardPenalty(team){
+    if(this.penalty)return;const defender=1-team,goalSign=team===0?1:-1;
+    const kicker=this.players.filter(p=>p.team===team&&!p.keeper).sort((a,b)=>a.position.distanceToSquared(new T.Vector3(goalSign*19,0,0))-b.position.distanceToSquared(new T.Vector3(goalSign*19,0,0)))[0];
+    const keeper=this.players.find(p=>p.team===defender&&p.keeper);if(!kicker||!keeper)return;
+    this.control.reset();this.ball.reset(goalSign*19,0);kicker.position.set(goalSign*18.25,0,0);kicker.facing.set(goalSign,0,0);keeper.position.set(goalSign*29.2,0,0);keeper.facing.set(-goalSign,0,0);
+    for(const p of this.players)if(p!==kicker&&p!==keeper){p.velocity.set(0,0,0);p.position.x=clamp(p.position.x,-14,14);p.position.z=clamp(p.position.z,-14,14);}
+    this.penalty={team,defender,kicker,keeper,goalSign,timer:2.2,kicked:false,shotTime:0};this.onMessage('¡PENAL!\nATACA Y DISPARA · DEFENSOR MUEVE AL PORTERO',2.2);this.audio.tone(520,.25);
+  }
+  stepPenalty(dt){
+    const p=this.penalty;if(!p)return;this.input.update(dt);p.timer-=dt;
+    let keeperMove=0,kick=null,aim=0;
+    if(this.active?.team===p.defender){const d=this.input.direction();keeperMove=d.x||d.z||0;}
+    if(this.active?.team===p.team&&this.input.release){kick=this.input.release;this.input.release=null;aim=this.input.direction().z||0;}
+    if(this.multiplayer){for(const [id,remote] of this.remote){const r=this.multiplayer.remoteInputs.get(id);if(!r)continue;if(remote.team===p.defender)keeperMove=r.x||r.z||keeperMove;if(remote.team===p.team&&r.kick){kick=r.kick;aim=r.z||0;r.kick=null;}}}
+    p.keeper.position.z=clamp(p.keeper.position.z+keeperMove*dt*7,-3.2,3.2);p.keeper.velocity.set(0,0,keeperMove*7);p.keeper.animate(dt);p.kicker.animate(dt);
+    if(!p.kicked&&p.timer<=0&&kick?.type==='shot'){const targetZ=clamp(aim*3.1,-3.4,3.4);const direction=new T.Vector3(p.goalSign*31-p.kicker.position.x,0,targetZ-p.kicker.position.z);this.control.release(.7);this.ball.kick(direction,25,1.7,0,p.team);p.kicked=true;}
+    if(p.kicked){p.shotTime+=dt;this.ball.step(dt);const d=this.ball.position.clone().sub(p.keeper.position).setY(0);if(d.length()<.9&&this.ball.position.y<1.7){this.ball.kick(d.normalize(),12,.7,0,p.defender);this.onMessage('¡ATAJADA!',1);p.kicked=false;p.timer=-5;}
+      if(p.shotTime>4){this.penalty=null;this.resetPositions(1-p.team);}}
+    else if(p.timer<-6){this.penalty=null;this.resetPositions(1-p.team);}
+  }
   switchPlayer(team=null){
     const targetTeam=team!==null?team:(this.active?.team??0);
     const current=this.active;
@@ -99,7 +120,7 @@ export class Match {
       this.input.update(dt);
       const switchPlayer=this.input.take('switchPlayer');
       if(switchPlayer)this.switchPlayer();
-      const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica'),skillG=this.input.take('skillBicicleta');
+      const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica'),skillG=this.input.take('skillBicicleta'),skillI=this.input.takeInsideCut?.()||false;
       const tackleV=this.input.take('tackle'),tackleX=this.input.take('slideTackle');
       const move=this.input.direction();
       let kickPayload=null;
@@ -110,12 +131,12 @@ export class Match {
       // Realtime is for short state messages, not a 120 Hz simulation feed.
       // Send movement at 20 Hz and send action edges immediately.
       this.inputSyncElapsed+=dt;
-      const hasEvent=!!(kickPayload||skillR||skillF||skillG||tackleV||tackleX||switchPlayer);
+      const hasEvent=!!(kickPayload||skillR||skillF||skillG||skillI||tackleV||tackleX||switchPlayer);
       if(this.multiplayer&&(hasEvent||this.inputSyncElapsed>=.05)){
         this.multiplayer.sendInput({
           x:move.x,z:move.z,sprint:this.input.sprint,
           kick:kickPayload,
-          skill:skillR?'sombrero':skillF?'elastica':skillG?'bicicleta':null,
+          skill:skillR?'sombrero':skillF?'elastica':skillG?'bicicleta':skillI?'recorte':null,
           tackle:tackleV,slideTackle:tackleX,switchPlayer
         });
         this.inputSyncElapsed=0;
@@ -131,6 +152,8 @@ export class Match {
       return;
     }
 
+    if(this.penalty){this.stepPenalty(dt);return;}
+
     // Host & Single Player branch
     this.input.update(dt);
     // `switchPlayer` used to be shown in the controls but was never consumed,
@@ -139,6 +162,7 @@ export class Match {
     if(this.input.take('skillSombrero'))this.control.startSkill(this.active,'sombrero');
     if(this.input.take('skillElastica'))this.control.startSkill(this.active,'elastica');
     if(this.input.take('skillBicicleta'))this.control.startSkill(this.active,'bicicleta');
+    if(this.input.takeInsideCut?.())this.control.startSkill(this.active,'recorte');
 
     if(this.isMultiplayer&&this.multiplayer){
       for(const [id,player] of this.remote){

@@ -11,6 +11,7 @@ export class Input {
   clear(){this.keys.clear();this.pressed.clear();this.charge=null;this.release=null;}
   // Devuelve true una sola vez por pulsación (disparo por flanco) de cualquiera de las teclas de la acción.
   take(action){for(const code of (controls[action]||[])){if(this.pressed.has(code)){this.pressed.delete(code);return true;}}return false;}
+  takeInsideCut(){if(this.keys.has('KeyA')&&this.pressed.has('KeyB')){this.pressed.delete('KeyB');return true;}return this.take('skillRecorte');}
   // Devuelve true mientras cualquiera de las teclas de la acción esté mantenida.
   held(action,{excludeArrows=false}={}){for(const code of (controls[action]||[])){if(excludeArrows&&code.startsWith('Arrow'))continue;if(this.keys.has(code))return true;}return false;}
   direction(){const opt=this.firstPerson?{excludeArrows:true}:undefined;const x=this.held('moveRight',opt)-this.held('moveLeft',opt),z=this.held('moveDown',opt)-this.held('moveUp',opt);return this.firstPerson?{x:-Math.cos(this.yaw)*x-Math.sin(this.yaw)*z,z:Math.sin(this.yaw)*x-Math.cos(this.yaw)*z}:{x,z};}
