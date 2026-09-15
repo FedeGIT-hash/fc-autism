@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Scene, Vector3 } from 'three';
+import { Scene } from 'three';
 import { Match } from '../src/match.js';
 import { MultiplayerManager } from '../src/multiplayer.js';
 
@@ -11,8 +11,13 @@ globalThis.document = {
   querySelector: () => ({ append() {} })
 };
 
-function fixture(isHost = true) {
-  const input = {
+const ROSTER = [
+  { id: 'p1', username: 'ana', side: 0, slot: 0 },
+  { id: 'p2', username: 'leo', side: 1, slot: 0 }
+];
+
+function makeInput() {
+  return {
     clear() { this.release = null; },
     update() {},
     take() { return false; },
@@ -21,33 +26,42 @@ function fixture(isHost = true) {
     sprint: false,
     release: null
   };
-  const dummyMp = {
-    remoteInput: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false },
+}
+
+function makeDummyMp() {
+  return {
+    remoteInputs: new Map(),
     sendInput() {},
     sendSnapshot() {},
     sendEvent() {}
   };
+}
+
+function fixture(isHost = true, localId = isHost ? 'p1' : 'p2') {
+  const input = makeInput();
+  const dummyMp = makeDummyMp();
   const m = new Match(new Scene(), input, { burst() {} }, { tone() {} });
-  m.setupMultiplayer(dummyMp, isHost, 0, 180);
+  m.setupMultiplayer(dummyMp, isHost, ROSTER, localId, { team: 0, duration: 180 });
   m.running = true;
   return { m, input, dummyMp };
 }
 
-test('el modo multijugador asigna equipos opuestos a host y guest', () => {
+test('el modo multijugador asigna cada jugador al slot y equipo elegidos', () => {
   const host = fixture(true).m;
   const guest = fixture(false).m;
 
   assert.equal(host.isMultiplayer, true);
   assert.equal(host.isHost, true);
-  assert.equal(host.active.team, 0); // P1 controla SOL FC (Team 0)
-  assert.equal(host.guestActive.team, 1);
+  assert.equal(host.active.team, 0); // p1 eligió side 0 (local)
+  assert.equal(host.active.index, 0);
+  assert.equal(host.remote.get('p2').team, 1);
 
   assert.equal(guest.isMultiplayer, true);
   assert.equal(guest.isHost, false);
-  assert.equal(guest.active.team, 1); // P2 controla MARINA FC (Team 1)
+  assert.equal(guest.active.team, 1); // p2 eligió side 1 (rival)
 });
 
-test('el host genera un snapshot compacto y el guest lo aplica fielmente', () => {
+test('el host genera un snapshot compacto y el guest lo aplica', () => {
   const host = fixture(true).m;
   const guest = fixture(false).m;
 
@@ -69,65 +83,49 @@ test('el host genera un snapshot compacto y el guest lo aplica fielmente', () =>
   assert.ok(Math.abs(guest.ball.position.x - 5.5) < 3);
 });
 
-test('los inputs del guest mueven al jugador rival en el host', () => {
+test('el input de un rival mueve a su jugador en el host', () => {
   const { m: host, dummyMp } = fixture(true);
-  const guestPlayer = host.guestActive;
-  assert.ok(guestPlayer);
+  const rival = host.remote.get('p2');
+  assert.ok(rival);
 
-  // Simular que el guest envía un movimiento hacia la izquierda (-X)
-  dummyMp.remoteInput = { x: -1, z: 0, sprint: true, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false };
+  dummyMp.remoteInputs.set('p2', { x: -1, z: 0, sprint: true });
 
-  const startX = guestPlayer.position.x;
-  for (let i = 0; i < 30; i++) {
-    host.step(1 / 120);
-  }
+  const startX = rival.position.x;
+  for (let i = 0; i < 30; i++) host.step(1 / 120);
 
-  assert.ok(guestPlayer.position.x < startX, `El rival no avanzó en dirección -X: ${guestPlayer.position.x}`);
+  assert.ok(rival.position.x < startX, `El rival no avanzó en dirección -X: ${rival.position.x}`);
 });
 
-test('cambiar de jugador en multijugador conmuta al compañero del equipo correspondiente', () => {
+test('el cambio de jugador queda desactivado en multijugador', () => {
   const host = fixture(true).m;
-  const oldHost = host.active;
+  const oldActive = host.active;
   host.switchPlayer(0);
-  assert.notEqual(host.active, oldHost);
-  assert.equal(host.active.team, 0);
-
-  const oldGuest = host.guestActive;
-  host.switchGuestPlayer();
-  assert.notEqual(host.guestActive, oldGuest);
-  assert.equal(host.guestActive.team, 1);
+  assert.equal(host.active, oldActive);
 });
 
 test('el generador de salas produce códigos válidos de 4 caracteres', () => {
-  const mp = new MultiplayerManager();
-  const code = mp.generateRoomCode();
+  const code = MultiplayerManager.generateRoomCode();
   assert.equal(code.length, 4);
   assert.match(code, /^[2-9A-Z]{4}$/);
 });
 
-test('los eventos de borde (tiro/regate) no se pierden con los frames vacíos siguientes', () => {
+test('los eventos de borde (tiro/regate) no se pierden con los frames vacíos', () => {
   const mp = new MultiplayerManager();
-  mp.onRemoteInput = () => {};
+  mp.isHost = true;
 
-  // El guest manda un tiro en un único frame…
-  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: { type: 'shot', time: 0.7, curve: 0 }, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
-  // …y en los frames siguientes manda kick: null (y regates/tackles a false).
-  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
-  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
+  mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: { type: 'shot', time: 0.7, curve: 0 }, skill: null, tackle: false, slideTackle: false } });
+  mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false } });
+  mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false } });
 
-  // El tiro sigue pendiente para que el host lo consuma en su step().
-  assert.equal(mp.remoteInput.kick.type, 'shot');
-  assert.equal(mp.remoteInput.kick.time, 0.7);
+  assert.equal(mp.remoteInputs.get('p2').kick.type, 'shot');
+  assert.equal(mp.remoteInputs.get('p2').kick.time, 0.7);
 
-  // El movimiento continuo sí se sobreescribe con el último valor.
-  mp.handleMessage({ type: 'input', input: { x: -1, z: 1, sprint: true, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
-  assert.equal(mp.remoteInput.x, -1);
-  assert.equal(mp.remoteInput.z, 1);
-  assert.equal(mp.remoteInput.sprint, true);
-  assert.equal(mp.remoteInput.kick.type, 'shot');
+  mp.handleInput({ id: 'p2', input: { x: -1, z: 1, sprint: true, kick: null, skill: null, tackle: false, slideTackle: false } });
+  assert.equal(mp.remoteInputs.get('p2').x, -1);
+  assert.equal(mp.remoteInputs.get('p2').z, 1);
+  assert.equal(mp.remoteInputs.get('p2').kick.type, 'shot');
 
-  // Una entrada (slide tackle) tampoco se borra con los frames vacíos.
-  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: true, switchPlayer: false } });
-  mp.handleMessage({ type: 'input', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false, switchPlayer: false } });
-  assert.equal(mp.remoteInput.slideTackle, true);
+  mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: true } });
+  mp.handleInput({ id: 'p2', input: { x: 0, z: 0, sprint: false, kick: null, skill: null, tackle: false, slideTackle: false } });
+  assert.equal(mp.remoteInputs.get('p2').slideTackle, true);
 });

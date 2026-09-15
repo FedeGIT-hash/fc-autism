@@ -6,6 +6,7 @@ import { Input } from './input.js';
 import { Match } from './match.js';
 import { GameCamera } from './game-camera.js';
 import { MultiplayerManager } from './multiplayer.js';
+import { auth } from './supabase.js';
 import { TEAMS, VENUES, DEFAULT_SETTINGS, clamp } from './config.js';
 import { controls, CONTROL_LABELS, resetControls, resetControl, saveControls, keyLabel, actionForCode } from './controls.js';
 
@@ -15,6 +16,7 @@ try{renderer=new T.WebGLRenderer({canvas:$('#scene'),antialias:true,powerPrefere
 renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;renderer.toneMapping=T.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;renderer.outputColorSpace=T.SRGBColorSpace;
 const scene=new T.Scene(),camera=new T.PerspectiveCamera(46,innerWidth/innerHeight,.04,1400);let stadium=new Stadium(scene,settings.stadium);const stadiumCache=new Map([[settings.stadium,stadium]]),environment=new Environment(scene,stadium),effects=new Effects(scene),audio=new StadiumAudio(),input=new Input(),match=new Match(scene,input,effects,audio),gameCamera=new GameCamera(camera,input),multiplayer=new MultiplayerManager();
 let inGame=false,menuTime=0,accumulator=0,last=performance.now(),announcementTime=0,practice=false;const target=new T.Vector3(),look=new T.Vector3();const radar=$('#radar').getContext('2d');
+let currentUser=null,hostConfig=null,pendingRoom=null;
 const save=()=>{try{localStorage.setItem('estadio-settings',JSON.stringify(settings));}catch{}};
 function announce(message,seconds=2){$('#announcement').textContent=message;announcementTime=seconds;}
 match.onMessage=announce;
@@ -34,7 +36,7 @@ $('#sound-toggle').onclick=()=>{settings.sound=!settings.sound;audio.setEnabled(
 function showControls(){$('#controls-dialog').showModal();}$('#help').onclick=showControls;$('#all-controls').onclick=showControls;document.querySelectorAll('.close-dialog').forEach(b=>b.onclick=()=>{const d=b.closest('dialog');(d||$('#controls-dialog')).close();});
 function start(isPractice=false){practice=isPractice;match.isMultiplayer=false;match.setup(settings.team,practice,settings.duration);match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;announce(practice?'CAMPO DE PRÁCTICA':settings.camera==='first'?'VIVE EL PARTIDO DESDE DENTRO':'COMIENZA TU MOMENTO',2);audio.tone(1200,.3);}
 $('#play').onclick=()=>start();$('#practice').onclick=()=>start(true);
-function startMultiplayer(isHost,config){
+function startMultiplayer(isHost,config,roster){
   practice=false;
   if(config.stadium&&config.stadium!==settings.stadium){
     stadium.setVisible(false);settings.stadium=config.stadium;
@@ -42,21 +44,22 @@ function startMultiplayer(isHost,config){
     stadium=stadiumCache.get(config.stadium);stadium.setVisible(true);environment.stadium=stadium;
   }
   if(config.weather)settings.weather=config.weather;applySettings();
-  match.setupMultiplayer(multiplayer,isHost,config.team||settings.team,config.duration||settings.duration);
-  match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=false;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;
-  announce(isHost?'PARTIDO ONLINE · LOCAL (P1)':'PARTIDO ONLINE · RIVAL (P2)',2.5);audio.tone(1200,.3);
+  match.setupMultiplayer(multiplayer,isHost,roster,currentUser.id,config);
+  match.ball.wet=settings.weather==='rain';match.running=true;input.enabled=true;inGame=true;cameraMode(settings.camera);document.body.classList.add('playing');$('#hud').hidden=false;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#pause-dialog').close();$('#score-home').textContent=match.teams[0].code;$('#score-away').textContent=match.teams[1].code;camera.position.set(-2,34,37);look.set(0,0,0);camera.lookAt(look);accumulator=0;
+  const name=(currentUser?.username||'').toUpperCase();
+  announce(isHost?'PARTIDO ONLINE · ANFITRIÓN':`PARTIDO ONLINE · ${name}`,2.5);audio.tone(1200,.3);
 }
 function pause(){if(!inGame||!match.running)return;if(document.pointerLockElement)document.exitPointerLock();match.running=false;input.enabled=false;input.clear();$('#pause-eyebrow').textContent='TOMA UN RESPIRO';$('#pause-title').textContent='EN PAUSA.';$('#pause-description').textContent='El campo te espera.';$('#resume').hidden=false;$('#pause-dialog').showModal();}
 function resume(){if(!inGame)return;$('#pause-dialog').close();match.running=true;input.enabled=true;input.clear();accumulator=0;}
 $('#pause').onclick=pause;$('#resume').onclick=resume;$('#restart').onclick=()=>start(practice);
 function quitGame(){
   $('#pause-dialog').close();match.running=false;input.enabled=false;input.clear();inGame=false;document.body.classList.remove('playing');$('#hud').hidden=true;const pingEl=$('#hud-ping');if(pingEl)pingEl.hidden=true;$('#announcement').textContent='';announcementTime=0;
-  if(match.isMultiplayer){multiplayer.disconnect();match.isMultiplayer=false;const net=$('#net-status-text');if(net)net.textContent='LOCAL PLAY';const b=$('#mp-status-banner');if(b)b.hidden=true;}
+  if(match.isMultiplayer){multiplayer.disconnect();match.isMultiplayer=false;const net=$('#net-status-text');if(net)net.textContent='LOCAL PLAY';const b=$('#mp-status-banner');if(b)b.hidden=true;resetMultiplayerUI();}
   match.setup(settings.team);panel('home');
 }
 $('#quit').onclick=quitGame;
 $('#pause-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!$('#resume').hidden)resume();});
-addEventListener('keydown',e=>{const action=actionForCode(e.code);if(action==='camera'&&inGame&&match.running&&!e.repeat)cameraMode(gameCamera.mode==='first'?'broadcast':'first');if(action==='pause'&&inGame&&!$('#pause-dialog').open)pause();if(action==='start'&&!inGame&&!document.querySelector('dialog[open]')&&!['BUTTON','SELECT'].includes(document.activeElement.tagName))start();});
+addEventListener('keydown',e=>{const action=actionForCode(e.code);if(action==='camera'&&inGame&&match.running&&!e.repeat)cameraMode(gameCamera.mode==='first'?'broadcast':'first');if(action==='pause'&&inGame&&!$('#pause-dialog').open)pause();if(action==='start'&&currentUser&&!inGame&&!document.querySelector('dialog[open]')&&!['BUTTON','SELECT'].includes(document.activeElement.tagName))start();});
 addEventListener('blur',()=>{if(inGame)pause();});document.addEventListener('visibilitychange',()=>{if(document.hidden&&inGame)pause();});
 match.onHalf=()=>{pause();$('#pause-eyebrow').textContent='45 MINUTOS';$('#pause-title').textContent='DESCANSO.';$('#pause-description').textContent='Segunda parte: sigues atacando a la misma portería. Saque del rival.';};
 match.onEnd=()=>{input.enabled=false;input.clear();$('#pause-eyebrow').textContent='90 MINUTOS · FINAL';$('#pause-title').textContent=`${match.score[0]} — ${match.score[1]}`;$('#pause-description').textContent=match.score[0]===match.score[1]?'Todo queda en tablas.':match.score[0]>match.score[1]?'La victoria lleva tus colores.':'Cada partido es una nueva oportunidad.';$('#resume').hidden=true;$('#pause-dialog').showModal();audio.tone(1300,.5);};
@@ -77,21 +80,16 @@ multiplayer.onStatus=(text,type)=>{
   const net=$('#net-status-text');if(net)net.textContent=text;
 };
 multiplayer.onConnected=({isHost,roomCode})=>{
-  const net=$('#net-status-text');if(net)net.textContent=`SALA #${roomCode}`;
-  announce('¡RIVAL CONECTADO!',2);audio.tone(1000,.4);
-  if(isHost){
-    setTimeout(()=>{
-      const cfg={team:settings.team,stadium:settings.stadium,duration:settings.duration,weather:settings.weather};
-      multiplayer.send('start_match',{config:cfg});
-      startMultiplayer(true,cfg);
-    },1200);
-  }
+  const net=$('#net-status-text');if(net)net.textContent=`ONLINE · #${roomCode}`;
+  $('#mp-create-view').hidden=true;$('#mp-join-view').hidden=true;$('#mp-lobby').hidden=false;
+  const code=$('#lobby-room-code');if(code)code.textContent=roomCode;
+  if(!isHost)announce('CONECTADO A LA SALA',2);
 };
-multiplayer.onMatchStart=config=>startMultiplayer(false,config);
+multiplayer.onRoster=roster=>renderRoster(roster);
+multiplayer.onMatchStart=(config,roster)=>startMultiplayer(multiplayer.isHost,config,roster);
 multiplayer.onSnapshot=snap=>match.applySnapshot(snap);
 multiplayer.onEvent=evt=>{if(evt.type==='goal'){match.audio.tone(700,.55);announce(`¡GOOOL!\n${match.teams[evt.team].name}`,2.4);}};
-multiplayer.onPing=ms=>{const p=$('#hud-ping');if(p){p.hidden=false;p.textContent=`● ${ms} ms`;}const n=$('#net-status-text');if(n)n.textContent=`ONLINE · ${ms}ms`;};
-multiplayer.onOpponentDisconnect=()=>{announce('RIVAL DESCONECTADO',3);if(inGame)setTimeout(()=>quitGame(),2800);};
+multiplayer.onOpponentDisconnect=()=>{announce('UN JUGADOR SE HA IDO',3);if(inGame)setTimeout(()=>quitGame(),2800);else renderRoster(multiplayer.roster);};
 
 $('#tab-create').onclick=()=>{
   $('#tab-create').classList.add('active');$('#tab-join').classList.remove('active');
@@ -101,11 +99,12 @@ $('#tab-join').onclick=()=>{
   $('#tab-join').classList.add('active');$('#tab-create').classList.remove('active');
   $('#mp-join-view').hidden=false;$('#mp-create-view').hidden=true;
 };
-$('#btn-start-host').onclick=()=>{
-  const wsUrl=$('#ws-server-url').value.trim()||null;
-  const code=multiplayer.createRoom(null,wsUrl);
-  $('#created-room-code').textContent=code;
+$('#btn-start-host').onclick=async()=>{
+  hostConfig={team:settings.team,stadium:settings.stadium,duration:settings.duration,weather:settings.weather};
+  const code=await multiplayer.createRoom(hostConfig);
+  if(code){$('#created-room-code').textContent=code;$('#lobby-room-code').textContent=code;}
 };
+$('#btn-start-match').onclick=()=>{if(hostConfig)multiplayer.startMatch(hostConfig);};
 $('#btn-copy-code').onclick=()=>{
   const code=multiplayer.roomCode||$('#created-room-code').textContent;
   if(code&&code!=='----'){navigator.clipboard.writeText(code).then(()=>{const b=$('#btn-copy-code');b.textContent='¡COPIADO!';setTimeout(()=>b.textContent='COPIAR',1500);});}
@@ -119,16 +118,36 @@ $('#btn-copy-link').onclick=()=>{
 };
 $('#btn-join-room').onclick=()=>{
   const code=$('#join-room-input').value.trim().toUpperCase();
-  const wsUrl=$('#ws-server-url').value.trim()||null;
-  if(code)multiplayer.joinRoom(code,wsUrl);else $('#join-room-input').focus();
+  const side=Number($('#join-team-select').value);
+  if(code)multiplayer.joinRoom(code,side);else $('#join-room-input').focus();
 };
-$('#toggle-advanced').onclick=()=>{$('#mp-advanced-options').hidden=!$('#mp-advanced-options').hidden;};
+
+function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function resetMultiplayerUI(){
+  $('#mp-create-view').hidden=false;$('#mp-join-view').hidden=true;$('#mp-lobby').hidden=true;
+  $('#mp-roster').innerHTML='';$('#lobby-count').textContent='0 / 4';$('#btn-start-match').hidden=true;
+  $('#created-room-code').textContent='----';$('#lobby-room-code').textContent='----';
+  hostConfig=null;
+}
+function renderRoster(roster){
+  const list=roster||multiplayer.roster||[];
+  const el=$('#mp-roster');if(!el)return;
+  el.innerHTML='';
+  for(const p of list){
+    const row=document.createElement('div');row.className='roster-row';
+    const side=p.side===0?'LOCAL':'RIVAL';
+    const me=p.id===currentUser?.id;
+    row.innerHTML=`<span class="roster-dot ${p.side===0?'':'rival'}"></span><span class="roster-name">${escapeHtml(p.username)}${me?'<b class="roster-you">TÚ</b>':''}</span><span class="roster-side">${side}</span>`;
+    el.appendChild(row);
+  }
+  const count=$('#lobby-count');if(count)count.textContent=`${list.length} / 4`;
+  const start=$('#btn-start-match');if(start)start.hidden=!(multiplayer.isHost&&list.length>=2);
+  const hint=$('#mp-lobby-hint');
+  if(hint)hint.textContent=multiplayer.isHost?(list.length>=2?'Listo para iniciar.':'Esperando jugadores… (comparte el código)'):'Esperando al anfitrión para iniciar…';
+}
 
 const urlParams=new URLSearchParams(location.search);
-if(urlParams.has('room')){
-  const room=urlParams.get('room').trim().toUpperCase();
-  if(room){panel('multiplayer');$('#tab-join').click();$('#join-room-input').value=room;setTimeout(()=>{multiplayer.joinRoom(room,$('#ws-server-url').value.trim()||null);},600);}
-}
+if(urlParams.has('room'))pendingRoom=urlParams.get('room').trim().toUpperCase();
 
 function controlLabel(action){return (controls[action]||[]).map(keyLabel).join(' / ');}
 function moveLabel(){return ['moveUp','moveLeft','moveDown','moveRight'].map(a=>{const code=(controls[a]||[]).find(c=>!c.startsWith('Arrow'))||(controls[a]||[])[0];return code?keyLabel(code):'—';}).join(' ');}
@@ -183,6 +202,72 @@ addEventListener('keydown',e=>{
   }else if(configDialog.open&&e.code==='Escape'){e.preventDefault();configDialog.close();}
 });
 
-refreshTeams();refreshVenues();match.setup(settings.team);applySettings();refreshControlLabels();requestAnimationFrame(frame);$('#loading').hidden=true;
+/* ----------------- Autenticación (nombre + contraseña) ----------------- */
+let authMode='login';
+function showAuthError(msg){const el=$('#auth-error');if(el){el.textContent=msg;el.hidden=false;}}
+function hideAuthError(){const el=$('#auth-error');if(el)el.hidden=true;}
+function setAuthMode(mode){
+  authMode=mode;
+  $('#auth-tab-login').classList.toggle('active',mode==='login');
+  $('#auth-tab-register').classList.toggle('active',mode==='register');
+  $('#auth-title').innerHTML=mode==='login'?'ENTRA CON TU<br><em>NOMBRE.</em>':'CREA TU<br><em>CUENTA.</em>';
+  $('#auth-submit').innerHTML=mode==='login'?'ENTRAR <span>↗</span>':'CREAR CUENTA <span>+</span>';
+  hideAuthError();
+}
+$('#auth-tab-login').onclick=()=>setAuthMode('login');
+$('#auth-tab-register').onclick=()=>setAuthMode('register');
+$('#auth-form').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const username=$('#auth-username').value.trim();
+  const password=$('#auth-password').value;
+  if(!username||!password){showAuthError('Escribe un nombre y una contraseña');return;}
+  const btn=$('#auth-submit');btn.disabled=true;hideAuthError();
+  try{
+    const res=authMode==='login'?await auth.login(username,password):await auth.register(username,password);
+    if(!res){showAuthError('No se pudo completar. Revisa la configuración de Supabase.');return;}
+    auth.save({id:res.id,username:res.username,token:res.token});
+    setAuthed(res);
+  }catch(err){
+    showAuthError(err.message||'Error al entrar');
+  }finally{
+    btn.disabled=false;
+  }
+});
+$('#btn-logout').onclick=()=>{
+  auth.clear();
+  multiplayer.disconnect();
+  if(inGame)quitGame();
+  panel('home');
+  currentUser=null;
+  const u=$('#current-user');if(u)u.textContent='—';
+  $('#auth-username').value='';$('#auth-password').value='';hideAuthError();
+  showAuth();
+};
+function setAuthed(me){
+  currentUser={id:me.id,username:me.username,token:me.token||auth.session()?.token};
+  $('#auth-screen').hidden=true;
+  const u=$('#current-user');if(u)u.textContent=me.username.toUpperCase();
+  if(pendingRoom){
+    const room=pendingRoom;pendingRoom=null;
+    panel('multiplayer');$('#tab-join').click();$('#join-room-input').value=room;
+    setTimeout(()=>multiplayer.joinRoom(room,1),400);
+  }
+}
+function showAuth(){
+  $('#auth-screen').hidden=false;
+  setTimeout(()=>{$('#auth-username').focus();},80);
+}
+async function initAuth(){
+  const s=auth.session();
+  if(s&&s.token){
+    try{
+      const me=await auth.whoami(s.token);
+      if(me){setAuthed({id:me.id,username:me.username,token:s.token});return;}
+    }catch{}
+  }
+  showAuth();
+}
+
+refreshTeams();refreshVenues();match.setup(settings.team);applySettings();refreshControlLabels();requestAnimationFrame(frame);$('#loading').hidden=true;initAuth();
 // Explicit opt-in only: a narrow inspection surface for local browser integration tests.
 if(new URLSearchParams(location.search).has('debug'))window.__ESTADIO__={match,environment,renderer,start,pause,resume,settings};

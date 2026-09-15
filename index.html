@@ -4,22 +4,42 @@
 <body>
   <canvas id="scene" aria-label="Estadio de fútbol 3D"></canvas>
   <div class="vignette"></div>
-  <header class="topbar"><a class="brand" href="#" aria-label="FC AUTISM inicio"><span class="brand-icon">FA</span> FC AUTISM<span class="brand-edition">26</span></a><nav><button class="nav-item active" data-panel="home">INICIO</button><button class="nav-item" data-panel="multiplayer">ONLINE 1v1 <span style="color:var(--lime)">●</span></button><button class="nav-item" data-panel="teams">EQUIPOS</button><button class="nav-item" data-panel="stadiums">ESTADIOS</button><button class="nav-item" data-panel="settings">CONFIGURACIÓN <span>↗</span></button></nav><div class="status" id="net-status"><i></i> <span id="net-status-text">LOCAL PLAY</span> <span class="avatar">1v1</span></div></header>
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand"><span class="brand-icon">FA</span> FC AUTISM <span class="brand-edition">26</span></div>
+      <div class="eyebrow"><span></span> VERIFÍCATE PARA ENTRAR</div>
+      <h2 id="auth-title">ENTRA CON TU<br><em>NOMBRE.</em></h2>
+      <div class="auth-tabs">
+        <button id="auth-tab-login" class="auth-tab active" type="button">ENTRAR</button>
+        <button id="auth-tab-register" class="auth-tab" type="button">CREAR CUENTA</button>
+      </div>
+      <form id="auth-form" autocomplete="off">
+        <label for="auth-username">NOMBRE DE USUARIO</label>
+        <input id="auth-username" type="text" maxlength="20" spellcheck="false" autocomplete="off" required />
+        <label for="auth-password">CONTRASEÑA</label>
+        <input id="auth-password" type="password" maxlength="40" autocomplete="off" required />
+        <p id="auth-error" class="auth-error" hidden></p>
+        <button id="auth-submit" class="primary" type="submit">ENTRAR <span>↗</span></button>
+      </form>
+      <p class="auth-note">Solo un nombre y una contraseña. Sin email, sin complicaciones.</p>
+    </div>
+  </div>
+  <header class="topbar"><a class="brand" href="#" aria-label="FC AUTISM inicio"><span class="brand-icon">FA</span> FC AUTISM<span class="brand-edition">26</span></a><nav><button class="nav-item active" data-panel="home">INICIO</button><button class="nav-item" data-panel="multiplayer">ONLINE <span style="color:var(--lime)">●</span></button><button class="nav-item" data-panel="teams">EQUIPOS</button><button class="nav-item" data-panel="stadiums">ESTADIOS</button><button class="nav-item" data-panel="settings">CONFIGURACIÓN <span>↗</span></button></nav><div class="status" id="net-status"><i></i> <span id="net-status-text">LOCAL PLAY</span> <span class="avatar" id="current-user" title="Tu cuenta">—</span></div></header>
   <main id="menu">
     <section id="home" class="panel home-panel">
       <div class="eyebrow"><span></span> FÚTBOL EN SU ESTADO PURO</div>
       <h1>EL CAMPO.<br>EL BALÓN.<br><em>TU MOMENTO.</em></h1>
       <p class="intro">Las luces se encienden. La grada espera.<br>El siguiente gran partido empieza contigo.</p>
-      <div class="main-actions"><button id="play" class="primary">JUGAR PARTIDO <span>↗</span></button><button id="play-online" class="primary" data-panel="multiplayer" style="background:#83d9ff;color:#102740;">ONLINE 1v1 <span>⚡</span></button><button class="square-button" id="help" aria-label="Ver controles">?</button></div>
+      <div class="main-actions"><button id="play" class="primary">JUGAR PARTIDO <span>↗</span></button><button id="play-online" class="primary" data-panel="multiplayer" style="background:#83d9ff;color:#102740;">ONLINE <span>⚡</span></button><button class="square-button" id="help" aria-label="Ver controles">?</button></div>
       <div class="play-note"><span class="key-small">↵</span> ENTRAR AL CAMPO <span class="dot">·</span> 5 CONTRA 5</div>
       <div class="match-preferences"><label for="camera-mode">TU PUNTO DE VISTA</label><select id="camera-mode"><option value="broadcast">Cámara de televisión</option><option value="first">Primera persona</option></select></div>
     </section>
     <section id="multiplayer" class="panel sub-panel multiplayer-panel" hidden>
-      <div class="eyebrow">PARTIDA EN RED · 2 JUGADORES</div>
-      <h2>DUELO ONLINE<br><em>1 CONTRA 1.</em></h2>
-      <p class="intro">Juega en tiempo real con un amigo desde cualquier lugar compartiendo el código o enlace directo.</p>
+      <div class="eyebrow">PARTIDA EN RED · HASTA 4 JUGADORES</div>
+      <h2>ONLINE<br><em>HASTA 4.</em></h2>
+      <p class="intro">Crea una sala y comparte el código. Cada jugador elige equipo al unirse: hasta 2 contra 2.</p>
       <div class="mp-tabs">
-        <button id="tab-create" class="mp-tab active">CREAR PARTIDA</button>
+        <button id="tab-create" class="mp-tab active">CREAR SALA</button>
         <button id="tab-join" class="mp-tab">UNIRSE A SALA</button>
       </div>
       <div id="mp-create-view" class="mp-view">
@@ -30,7 +50,7 @@
             <button id="btn-copy-code" class="btn-small" title="Copiar código">COPIAR</button>
             <button id="btn-copy-link" class="btn-small" title="Copiar enlace">ENLACE ↗</button>
           </div>
-          <p class="mp-tip">Comparte este código o enlace con tu amigo para que entre como rival (MARINA FC).</p>
+          <p class="mp-tip">Comparte el código o el enlace. Cuando estén todos, pulsa INICIAR.</p>
         </div>
         <button id="btn-start-host" class="primary">CREAR SALA NUEVA <span>+</span></button>
       </div>
@@ -38,25 +58,31 @@
         <div class="mp-box">
           <label for="join-room-input">CÓDIGO DE LA SALA</label>
           <input type="text" id="join-room-input" placeholder="EJ. 78A2" maxlength="8" autocomplete="off" spellcheck="false" />
+          <label for="join-team-select" style="margin-top:8px">ELIGE EQUIPO</label>
+          <select id="join-team-select">
+            <option value="0">EQUIPO LOCAL (el del anfitrión)</option>
+            <option value="1" selected>EQUIPO RIVAL</option>
+          </select>
         </div>
-        <button id="btn-join-room" class="primary">CONECTAR Y JUGAR <span>↗</span></button>
+        <button id="btn-join-room" class="primary">UNIRSE Y JUGAR <span>↗</span></button>
+      </div>
+      <div id="mp-lobby" class="mp-lobby" hidden>
+        <div class="mp-lobby-head">
+          <span>SALA <strong id="lobby-room-code">----</strong></span>
+          <span id="lobby-count">0 / 4</span>
+        </div>
+        <div id="mp-roster" class="mp-roster"></div>
+        <button id="btn-start-match" class="primary" hidden>INICIAR PARTIDO <span>▶</span></button>
+        <p class="mp-tip" id="mp-lobby-hint">Esperando jugadores…</p>
       </div>
       <div id="mp-status-banner" class="mp-status" hidden>
         <span class="mp-spinner" id="mp-spinner"></span>
         <strong id="mp-status-text">Conectando...</strong>
       </div>
-      <div class="mp-advanced-toggle">
-        <button id="toggle-advanced" class="text-button">Opciones de red (Servidor WebSocket / Render)</button>
-        <div id="mp-advanced-options" hidden>
-          <label for="ws-server-url">URL Servidor WebSocket (Render o local):</label>
-          <input type="text" id="ws-server-url" placeholder="wss://tu-servidor.onrender.com (Vacío = WebRTC P2P directo)" />
-          <small>Por defecto usa WebRTC directo sin servidor (ideal para subir a Vercel).</small>
-        </div>
-      </div>
       <button class="secondary" data-panel="home" style="margin-top:16px;">VOLVER AL MENÚ PRINCIPAL</button>
     </section>
     <section id="teams" class="panel sub-panel" hidden><div class="eyebrow">PREPARA EL ENCUENTRO</div><h2>ELIGE TUS<br><em>COLORES.</em></h2><p class="intro">Tu equipo, tu identidad. El rival se elige automáticamente.</p><div id="team-options"></div><button class="primary" data-panel="home">CONFIRMAR EQUIPO <span>↗</span></button></section>
-    <section id="settings" class="panel sub-panel settings-panel" hidden><div class="eyebrow">A TU MANERA</div><h2>CADA DETALLE<br><em>CUENTA.</em></h2><div class="settings-list"><label>Calidad gráfica<select id="quality"><option value="medium">Equilibrada</option><option value="high">Alta</option><option value="low">Rendimiento</option></select></label><label>Hora del partido<select id="time"><option value="dusk">Atardecer</option><option value="day">Día</option><option value="night">Noche</option><option value="cycle">Ciclo dinámico</option></select></label><label>Clima<select id="weather"><option value="clear">Despejado</option><option value="rain">Lluvia</option></select></label><label>Duración real<select id="duration"><option value="180">3 minutos</option><option value="360" selected>6 minutos</option><option value="600">10 minutos</option></select></label><label>Ambiente de estadio<button id="sound-toggle" class="toggle" aria-pressed="false">DESACTIVADO</button></label></div><button id="open-controls-config" class="secondary" style="margin-top:16px">PERSONALIZAR CONTROLES <span>↗</span></button><button class="primary" data-panel="home">LISTO PARA JUGAR <span>↗</span></button></section>
+    <section id="settings" class="panel sub-panel settings-panel" hidden><div class="eyebrow">A TU MANERA</div><h2>CADA DETALLE<br><em>CUENTA.</em></h2><div class="settings-list"><label>Calidad gráfica<select id="quality"><option value="medium">Equilibrada</option><option value="high">Alta</option><option value="low">Rendimiento</option></select></label><label>Hora del partido<select id="time"><option value="dusk">Atardecer</option><option value="day">Día</option><option value="night">Noche</option><option value="cycle">Ciclo dinámico</option></select></label><label>Clima<select id="weather"><option value="clear">Despejado</option><option value="rain">Lluvia</option></select></label><label>Duración real<select id="duration"><option value="180">3 minutos</option><option value="360" selected>6 minutos</option><option value="600">10 minutos</option></select></label><label>Ambiente de estadio<button id="sound-toggle" class="toggle" aria-pressed="false">DESACTIVADO</button></label></div><button id="open-controls-config" class="secondary" style="margin-top:16px">PERSONALIZAR CONTROLES <span>↗</span></button><button id="btn-logout" class="secondary">CERRAR SESIÓN</button><button class="primary" data-panel="home">LISTO PARA JUGAR <span>↗</span></button></section>
     <section id="stadiums" class="panel sub-panel stadium-panel" hidden><div class="eyebrow">DOS ESCENARIOS. TU HISTORIA.</div><h2>ELIGE DÓNDE<br><em>HACER HISTORIA.</em></h2><div id="stadium-options"></div><button class="primary" data-panel="home">CONFIRMAR ESTADIO <span>↗</span></button></section><button class="venue-discover" data-panel="stadiums"><span>EXPLORA LOS ESTADIOS</span><strong id="venue-preview-name">ESTADIO DEL SOL</strong><small id="venue-preview-description">El calor de la grada. La esencia del fútbol.</small><b>CAMBIAR ESCENARIO ↗</b></button><aside class="venue-tag"><div class="venue-icon">⌖</div><div><strong data-venue-name>ESTADIO DEL SOL</strong><span id="venue-weather">19:40 · ATARDECER · 24 °C</span></div><span class="venue-live">EN VIVO</span></aside>
     <div class="bottom-cards"><button class="match-card" data-panel="teams"><div class="card-heading">PARTIDO RÁPIDO <span>↗</span></div><div class="match-teams"><div><span class="crest home-crest">SOL</span><strong id="home-team-name">SOL FC</strong></div><span class="versus">VS</span><div><span class="crest away-crest">MAR</span><strong id="away-team-name">MARINA FC</strong></div></div><div class="card-foot">AMISTOSO <span data-venue-name>ESTADIO DEL SOL</span></div></button><button class="feature-card" id="practice"><span class="card-heading">TU JUEGO, A OTRO NIVEL <span>↗</span></span><strong>EL TALENTO<br>SE ENTRENA.</strong><span class="feature-foot"><i></i> CAMPO DE PRÁCTICA</span><span class="field-art"></span></button><div class="control-card"><span class="card-heading">DOMINA EL PARTIDO</span><div><span class="keys" id="menu-move-keys"><kbd>W</kbd><br><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Muévete con libertad<small>360° de posibilidades</small></span></div><button id="all-controls">VER TODOS LOS CONTROLES <span>→</span></button></div></div>
   </main>

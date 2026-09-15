@@ -8,7 +8,7 @@ import { PlaystyleManager } from './playstyle.js';
 
 export class Match {
   constructor(scene,input,effects,audio){this.scene=scene;this.input=input;this.effects=effects;this.audio=audio;this.players=[];this.ball=new BallPhysics();this.ball.onGoal=team=>this.goal(team);this.ball.onOut=()=>this.restartFromOut();this.score=[0,0];this.elapsed=0;this.running=false;this.freeze=0;this.practice=false;this.duration=360;this.active=null;this.onMessage=()=>{};this.onEnd=()=>{};this.onHalf=()=>{};this.halfDone=false;
-    this.isMultiplayer=false;this.isHost=true;this.guestActive=null;this.hostActive=null;this.multiplayer=null;this.syncCounter=0;
+    this.isMultiplayer=false;this.isHost=true;this.multiplayer=null;this.localId=null;this.remote=new Map();this.syncCounter=0;
     this.control=new BallControl(this);this.ai=new FootballAI(this);this.playstyle=new PlaystyleManager(scene,this);
     const tex=this.ballTexture();this.ballMesh=new T.Mesh(new T.SphereGeometry(BALL.radius,24,16),new T.MeshStandardMaterial({map:tex,roughness:.55}));this.ballMesh.castShadow=true;scene.add(this.ballMesh);
     this.marker=new T.Mesh(new T.RingGeometry(.49,.56,40),new T.MeshBasicMaterial({color:0xdaff78,side:T.DoubleSide}));this.marker.rotation.x=-Math.PI/2;scene.add(this.marker);
@@ -19,51 +19,32 @@ export class Match {
   setup(team=0,practice=false,duration=360){this.players.forEach(p=>p.dispose(this.scene));this.players=[];this.teamIndex=team;this.practice=practice;this.duration=duration;this.score=[0,0];this.elapsed=0;this.halfDone=false;this.freeze=0;this.teams=[TEAMS[team],TEAMS[(team+1)%TEAMS.length]];
     for(let t=0;t<2;t++)for(let i=0;i<5;i++){if(practice&&t===1&&i!==4)continue;this.players.push(new Player(this.scene,t,i,this.teams[t]));}this.resetPositions(0);this.running=false;this.syncVisuals(0);this.playstyle.reset();
   }
-  setupMultiplayer(multiplayer,isHost,team=0,duration=360){
-    this.isMultiplayer=true;this.isHost=isHost;this.multiplayer=multiplayer;this.setup(team,false,duration);
-    if(!isHost){
-      this.active=this.players.find(p=>p.team===1&&p.index===0)||this.active;
-      this.hostActive=this.players.find(p=>p.team===0&&p.index===0)||null;
-    }else{
-      this.guestActive=this.players.find(p=>p.team===1&&p.index===0)||null;
-      this.hostActive=this.active;
+  setupMultiplayer(multiplayer,isHost,roster,localId,config={}){
+    this.isMultiplayer=true;this.isHost=isHost;this.multiplayer=multiplayer;this.localId=localId;this.remote=new Map();
+    this.setup(config.team||0,false,config.duration||360);
+    const myEntry=roster.find(p=>p.id===localId);
+    this.localTeam=myEntry?myEntry.side:0;this.localIndex=myEntry?myEntry.slot:0;
+    for(const entry of roster){
+      const player=this.players.find(p=>p.team===entry.side&&p.index===entry.slot);
+      if(!player)continue;
+      if(entry.id===localId){this.active=player;}
+      else{player.remoteId=entry.id;this.remote.set(entry.id,player);}
     }
   }
   resetPositions(kickoff=0){this.control.reset();this.ai.reset();const formation=[[-.68,0],[-10,-11],[-11,10],[-19,0],[-28,0]];for(const p of this.players){const pos=formation[p.index],sign=p.team===0?1:-1;p.reset(pos[0]*sign,pos[1]);if(p.index===0&&p.team!==kickoff)p.position.x=-sign*5;}this.ball.reset();
-    if(this.isMultiplayer&&!this.isHost){
-      this.active=this.players.find(p=>p.team===1&&p.index===0);
-      this.hostActive=this.players.find(p=>p.team===0&&p.index===0);
-    }else{
-      this.active=this.players.find(p=>p.team===0&&p.index===0);
-      if(this.isMultiplayer)this.guestActive=this.players.find(p=>p.team===1&&p.index===0);
-    }
+    if(!this.isMultiplayer)this.active=this.players.find(p=>p.team===0&&p.index===0);
     this.input.clear();
   }
   goal(team){if(this.freeze>0)return;this.control.release();this.score[team]++;this.freeze=2.4;this.kickoff=1-team;this.ball.velocity.multiplyScalar(.1);this.onMessage(`¡GOOOL!\n${this.teams[team].name}`,2.4);this.audio.tone(700,.55);
     if(this.isMultiplayer&&this.isHost&&this.multiplayer)this.multiplayer.sendEvent({type:'goal',team,score:[...this.score]});
   }
-  restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;if(team===0)this.active=p;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
+  restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;if(team===0&&!this.isMultiplayer)this.active=p;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
   switchPlayer(team=null){
-    const targetTeam=team!==null?team:(this.isMultiplayer&&!this.isHost?1:0);
-    const current=(this.isMultiplayer&&!this.isHost)?this.active:(targetTeam===0?this.active:this.guestActive);
+    if(this.isMultiplayer)return; // cambio de jugador desactivado online (slots fijos)
+    const targetTeam=team!==null?team:0;
+    const current=this.active;
     const sorted=this.players.filter(p=>p.team===targetTeam&&p!==current&&!p.keeper).sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position));
-    if(sorted[0]){
-      if(this.isMultiplayer&&!this.isHost){
-        this.active=sorted[0];
-        if(this.multiplayer)this.multiplayer.sendInput({switchPlayer:true,newIndex:sorted[0].index});
-      }else if(this.isMultiplayer&&this.isHost&&targetTeam===1){
-        this.guestActive=sorted[0];
-      }else{
-        this.active=sorted[0];
-      }
-    }
-  }
-  switchGuestPlayer(newIndex=null){
-    if(newIndex!==null&&newIndex!==undefined){
-      const p=this.players.find(pl=>pl.team===1&&pl.index===newIndex&&!pl.keeper);
-      if(p){this.guestActive=p;return;}
-    }
-    this.switchPlayer(1);
+    if(sorted[0])this.active=sorted[0];
   }
   requestKick(p,type,charge=0,curve=0,receiver=null){if(p.cooldown>0||p.skillTime>0||p.slide>0)return;const amount=clamp(charge/1.2,0,1);
     const ps=p.playstyle;if(ps){if(type==='shot'&&ps.type==='bombeado'){this.requestBombeado(p,amount);return;}if((type==='pass'||type==='through')&&ps.type==='balistico'){this.requestBalistico(p);return;}}
@@ -106,7 +87,6 @@ export class Match {
     // Multiplayer Guest (!isHost) branch
     if(this.isMultiplayer&&!this.isHost){
       this.input.update(dt);
-      if(this.input.take('switchPlayer'))this.switchPlayer(1);
       const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica'),skillG=this.input.take('skillBicicleta');
       const tackleV=this.input.take('tackle'),tackleX=this.input.take('slideTackle');
       const move=this.input.direction();
@@ -135,18 +115,20 @@ export class Match {
     }
 
     // Host & Single Player branch
-    this.input.update(dt);if(this.input.take('switchPlayer'))this.switchPlayer(0);
+    this.input.update(dt);
     if(this.input.take('skillSombrero'))this.control.startSkill(this.active,'sombrero');
     if(this.input.take('skillElastica'))this.control.startSkill(this.active,'elastica');
     if(this.input.take('skillBicicleta'))this.control.startSkill(this.active,'bicicleta');
 
-    if(this.isMultiplayer&&this.multiplayer&&this.guestActive){
-      const r=this.multiplayer.remoteInput;
-      if(r.switchPlayer){this.switchGuestPlayer(r.newIndex);r.switchPlayer=false;}
-      if(r.skill){this.control.startSkill(this.guestActive,r.skill);r.skill=null;}
-      if(r.slideTackle){if(this.guestActive.startTackle(true))this.effects.burst(this.guestActive.position,22);r.slideTackle=false;}
-      if(r.tackle){this.guestActive.startTackle(false);r.tackle=false;}
-      if(r.kick){this.requestKick(this.guestActive,r.kick.type,r.kick.time,r.kick.curve);r.kick=null;}
+    if(this.isMultiplayer&&this.multiplayer){
+      for(const [id,player] of this.remote){
+        const r=this.multiplayer.remoteInputs.get(id);
+        if(!r)continue;
+        if(r.skill){this.control.startSkill(player,r.skill);r.skill=null;}
+        if(r.slideTackle){if(player.startTackle(true))this.effects.burst(player.position,22);r.slideTackle=false;}
+        if(r.tackle){player.startTackle(false);r.tackle=false;}
+        if(r.kick){this.requestKick(player,r.kick.type,r.kick.time,r.kick.curve);r.kick=null;}
+      }
     }
 
     const movement=this.input.direction();const aim=new T.Vector3(movement.x,0,movement.z);this.ai.update(dt);
@@ -156,9 +138,9 @@ export class Match {
         if(this.input.take('slideTackle')&&p.startTackle(true))this.effects.burst(p.position,22);
         if(this.input.take('tackle'))p.startTackle(false);
         if(p.slide>0)dir.copy(p.facing);
-      }else if(this.isMultiplayer&&p===this.guestActive&&this.multiplayer){
-        const r=this.multiplayer.remoteInput;
-        dir.set(r.x||0,0,r.z||0);sprint=!!r.sprint;
+      }else if(p.remoteId&&this.multiplayer){
+        const r=this.multiplayer.remoteInputs.get(p.remoteId);
+        dir.set(r?.x||0,0,r?.z||0);sprint=!!r?.sprint;
         if(p.slide>0)dir.copy(p.facing);
       }else{
         const decision=this.ai.steer(p);dir.copy(decision.direction);sprint=decision.sprint;
@@ -196,8 +178,7 @@ export class Match {
     return {
       t:Number(this.elapsed.toFixed(2)),s:[this.score[0],this.score[1]],f:Number(this.freeze.toFixed(2)),h:this.halfDone,
       b:{p:[Number(this.ball.position.x.toFixed(2)),Number(this.ball.position.y.toFixed(2)),Number(this.ball.position.z.toFixed(2))],v:[Number(this.ball.velocity.x.toFixed(2)),Number(this.ball.velocity.y.toFixed(2)),Number(this.ball.velocity.z.toFixed(2))],w:this.control.owner?[this.control.owner.team,this.control.owner.index]:null},
-      p:this.players.map(p=>({t:p.team,i:p.index,x:Number(p.position.x.toFixed(2)),z:Number(p.position.z.toFixed(2)),fx:Number(p.facing.x.toFixed(2)),fz:Number(p.facing.z.toFixed(2)),vx:Number(p.velocity.x.toFixed(2)),vz:Number(p.velocity.z.toFixed(2)),st:Number(p.stamina.toFixed(2)),sl:Number(p.slide.toFixed(2)),kt:Number(p.kickTime.toFixed(2)),sk:p.skillTime>0?p.skillType:null})),
-      ha:this.active?this.active.index:0,ga:this.guestActive?this.guestActive.index:0
+      p:this.players.map(p=>({t:p.team,i:p.index,x:Number(p.position.x.toFixed(2)),z:Number(p.position.z.toFixed(2)),fx:Number(p.facing.x.toFixed(2)),fz:Number(p.facing.z.toFixed(2)),vx:Number(p.velocity.x.toFixed(2)),vz:Number(p.velocity.z.toFixed(2)),st:Number(p.stamina.toFixed(2)),sl:Number(p.slide.toFixed(2)),kt:Number(p.kickTime.toFixed(2)),sk:p.skillTime>0?p.skillType:null}))
     };
   }
   applySnapshot(snap){
@@ -221,13 +202,9 @@ export class Match {
         }
       }
     }
-    if(this.isMultiplayer&&!this.isHost){
-      this.hostActive=this.players.find(p=>p.team===0&&p.index===snap.ha)||this.hostActive;
-    }
   }
   syncVisuals(dt){this.ballMesh.position.copy(this.ball.position);const speed=this.ball.velocity.length();if(speed>.01){const axis=new T.Vector3(this.ball.velocity.z,0,-this.ball.velocity.x).normalize();this.ballMesh.rotateOnWorldAxis(axis,speed*dt/BALL.radius);}this.marker.visible=!!this.active;if(this.active)this.marker.position.set(this.active.position.x,.04,this.active.position.z);
-    const rival=this.isHost?this.guestActive:this.hostActive;
-    if(this.isMultiplayer&&rival&&this.guestMarker){this.guestMarker.visible=true;this.guestMarker.position.set(rival.position.x,.04,rival.position.z);}else if(this.guestMarker){this.guestMarker.visible=false;}
+    if(this.guestMarker)this.guestMarker.visible=false;
     this.ballShadow.position.set(this.ball.position.x,.028,this.ball.position.z);this.ballShadow.material.opacity=.35/(1+this.ball.position.y);this.ballShadow.scale.setScalar(1+this.ball.position.y*.15);
   }
   dispose(){if(this.guestMarker)this.scene.remove(this.guestMarker);this.players.forEach(p=>p.dispose(this.scene));}
