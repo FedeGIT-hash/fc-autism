@@ -96,11 +96,23 @@ test('el input de un rival mueve a su jugador en el host', () => {
   assert.ok(rival.position.x < startX, `El rival no avanzó en dirección -X: ${rival.position.x}`);
 });
 
-test('el cambio de jugador queda desactivado en multijugador', () => {
+test('el cambio de jugador funciona en multijugador sin tomar un jugador humano ajeno', () => {
   const host = fixture(true).m;
   const oldActive = host.active;
   host.switchPlayer(0);
-  assert.equal(host.active, oldActive);
+  assert.notEqual(host.active, oldActive);
+  assert.equal(host.active.remoteId, undefined);
+});
+
+test('el cambio de un invitado se sincroniza con el anfitrión', () => {
+  const { m: host } = fixture(true);
+  const oldRemote = host.remote.get('p2');
+  const next = host.switchRemotePlayer('p2');
+  assert.ok(next);
+  assert.notEqual(next, oldRemote);
+  assert.equal(host.remote.get('p2'), next);
+  assert.equal(next.remoteId, 'p2');
+  assert.equal(oldRemote.remoteId, null);
 });
 
 test('el generador de salas produce códigos válidos de 4 caracteres', () => {

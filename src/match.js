@@ -40,16 +40,21 @@ export class Match {
   }
   restartFromOut(){if(this.freeze>0)return;this.control.reset();const x=clamp(this.ball.position.x,-28,28),z=clamp(this.ball.position.z,-18,18),team=1-this.ball.lastTouch;this.ball.reset(x,z);const candidates=this.players.filter(p=>p.team===team&&!p.keeper);const p=candidates.sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position))[0];if(p){p.position.set(x+(team===0?-.7:.7),0,z);p.facing.set(team===0?1:-1,0,0);p.cooldown=.5;}this.onMessage('BALÓN FUERA · SAQUE',1.3);}
   switchPlayer(team=null){
-    if(this.isMultiplayer)return; // cambio de jugador desactivado online (slots fijos)
-    const targetTeam=team!==null?team:0;
+    const targetTeam=team!==null?team:(this.active?.team??0);
     const current=this.active;
     const owner=this.control.owner;
-    const sorted=this.players.filter(p=>p.team===targetTeam&&p!==current&&!p.keeper).sort((a,b)=>{
+    const sorted=this.players.filter(p=>p.team===targetTeam&&p!==current&&!p.keeper&&(!p.remoteId||p.remoteId===current?.remoteId)).sort((a,b)=>{
       // If a teammate controls the ball, make that player the first option.
       if(a===owner)return -1;if(b===owner)return 1;
       return a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position);
     });
     if(sorted[0])this.active=sorted[0];
+  }
+  switchRemotePlayer(id){
+    const current=this.remote.get(id);if(!current)return null;
+    const sorted=this.players.filter(p=>p.team===current.team&&p!==current&&!p.keeper&&!p.remoteId).sort((a,b)=>a.position.distanceToSquared(this.ball.position)-b.position.distanceToSquared(this.ball.position));
+    const next=sorted[0];if(!next)return null;
+    current.remoteId=null;next.remoteId=id;this.remote.set(id,next);return next;
   }
   requestKick(p,type,charge=0,curve=0,receiver=null){if(p.cooldown>0||p.skillTime>0||p.slide>0)return;const amount=clamp(charge/1.2,0,1);
     const ps=p.playstyle;if(ps){if(type==='shot'&&ps.type==='bombeado'){this.requestBombeado(p,amount);return;}if((type==='pass'||type==='through')&&ps.type==='balistico'){this.requestBalistico(p);return;}}
@@ -92,6 +97,8 @@ export class Match {
     // Multiplayer Guest (!isHost) branch
     if(this.isMultiplayer&&!this.isHost){
       this.input.update(dt);
+      const switchPlayer=this.input.take('switchPlayer');
+      if(switchPlayer)this.switchPlayer();
       const skillR=this.input.take('skillSombrero'),skillF=this.input.take('skillElastica'),skillG=this.input.take('skillBicicleta');
       const tackleV=this.input.take('tackle'),tackleX=this.input.take('slideTackle');
       const move=this.input.direction();
@@ -105,7 +112,7 @@ export class Match {
           x:move.x,z:move.z,sprint:this.input.sprint,
           kick:kickPayload,
           skill:skillR?'sombrero':skillF?'elastica':skillG?'bicicleta':null,
-          tackle:tackleV,slideTackle:tackleX
+          tackle:tackleV,slideTackle:tackleX,switchPlayer
         });
       }
       if(this.active){
@@ -132,10 +139,12 @@ export class Match {
       for(const [id,player] of this.remote){
         const r=this.multiplayer.remoteInputs.get(id);
         if(!r)continue;
-        if(r.skill){this.control.startSkill(player,r.skill);r.skill=null;}
-        if(r.slideTackle){if(player.startTackle(true))this.effects.burst(player.position,22);r.slideTackle=false;}
-        if(r.tackle){player.startTackle(false);r.tackle=false;}
-        if(r.kick){this.requestKick(player,r.kick.type,r.kick.time,r.kick.curve);r.kick=null;}
+        let controlled=player;
+        if(r.switchPlayer){controlled=this.switchRemotePlayer(id)||player;r.switchPlayer=false;}
+        if(r.skill){this.control.startSkill(controlled,r.skill);r.skill=null;}
+        if(r.slideTackle){if(controlled.startTackle(true))this.effects.burst(controlled.position,22);r.slideTackle=false;}
+        if(r.tackle){controlled.startTackle(false);r.tackle=false;}
+        if(r.kick){this.requestKick(controlled,r.kick.type,r.kick.time,r.kick.curve);r.kick=null;}
       }
     }
 

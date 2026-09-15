@@ -228,6 +228,7 @@ export class MultiplayerManager {
     if (input.skill) ri.skill = input.skill;
     if (input.tackle) ri.tackle = true;
     if (input.slideTackle) ri.slideTackle = true;
+    if (input.switchPlayer) ri.switchPlayer = true;
     this.remoteInputs.set(payload.id, ri);
   }
 
